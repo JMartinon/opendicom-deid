@@ -13,9 +13,50 @@ from tkinter.scrolledtext import ScrolledText
 from .. import __version__
 from ..cli import report_path_allowed
 from ..core.models import Cancelled, Progress, ScanResult
-from ..core.report import Report
+from ..core.report import Report, format_findings
 from .licenses import license_text
 from .settings import AdvancedSettings
+from .theme import BACKGROUND, MUTED, SURFACE, TEXT, apply_theme
+
+
+def create_output_folder(parent: str, name: str, input_directory: str) -> Path:
+    """Create exactly one new folder, keeping it outside the source tree."""
+    name = name.strip()
+    if (
+        not name
+        or name in {".", ".."}
+        or name.endswith(".")
+        or any(character in '<>:"/\\|?*' or ord(character) < 32 for character in name)
+        or name.split(".", 1)[0].upper()
+        in {
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+            *(f"COM{number}" for number in range(1, 10)),
+            *(f"LPT{number}" for number in range(1, 10)),
+        }
+    ):
+        raise ValueError("Enter a folder name without path separators or special characters.")
+    if not parent.strip():
+        raise ValueError("Choose a parent folder first.")
+    parent_path = Path(parent).expanduser().resolve(strict=True)
+    if not parent_path.is_dir():
+        raise ValueError("The parent location must be an existing folder.")
+    destination = parent_path / name
+    if input_directory.strip():
+        source = Path(input_directory.strip()).expanduser().resolve()
+        if (
+            destination == source
+            or destination.is_relative_to(source)
+            or source.is_relative_to(destination)
+        ):
+            raise ValueError(
+                "Create the output folder outside the input folder and its parent folders."
+            )
+    # Do not reuse, overwrite, or remove a pre-existing directory or symlink.
+    destination.mkdir(mode=0o700)
+    return destination
 
 
 class App(tk.Tk):
@@ -23,15 +64,19 @@ class App(tk.Tk):
 
     def __init__(self) -> None:
         super().__init__()
+        apply_theme(self)
         self.title("OpenDICOM De-ID")
-        self.minsize(660, 630)
-        self.geometry("760x750")
+        self.minsize(740, 680)
+        width = min(860, max(740, self.winfo_screenwidth() - 80))
+        height = min(800, max(680, self.winfo_screenheight() - 100))
+        self.geometry(f"{width}x{height}")
         self.protocol("WM_DELETE_WINDOW", self.close)
         self._events: Queue[tuple[str, object]] = Queue()
         self._cancel = Event()
         self._busy = False
         self._closing = False
         self._advanced_visible = False
+        self._folder_window: tk.Toplevel | None = None
         self._last_scan: tuple[str, bool] | None = None
         self._report: Report | None = None
         self._report_input: Path | None = None
@@ -43,94 +88,144 @@ class App(tk.Tk):
         self.scan_summary = tk.StringVar(value="DICOM files and modalities will appear here.")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        frame = ttk.Frame(self, padding=24)
+        frame = ttk.Frame(self, padding=(24, 18))
         frame.grid(sticky="nsew")
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(12, weight=1)
+        frame.rowconfigure(4, weight=1)
         header = ttk.Frame(frame)
-        header.grid(row=0, column=0, sticky="ew")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="OpenDICOM De-ID", font=("TkDefaultFont", 23, "bold")).grid(
-            sticky="w"
-        )
-        ttk.Button(header, text="About", command=self.show_about).grid(row=0, column=1, sticky="e")
-        ttk.Label(frame, text="Offline DICOM de-identification").grid(
-            row=1, column=0, sticky="w", pady=(4, 20)
+        ttk.Label(header, text="OpenDICOM De-ID", style="Title.TLabel").grid(sticky="w")
+        ttk.Label(
+            header, text="DICOM de-identification, on your computer.", style="Muted.TLabel"
+        ).grid(row=1, sticky="w", pady=(5, 0))
+        ttk.Label(header, text="OFFLINE", style="Badge.TLabel").grid(row=0, column=1, padx=(16, 12))
+        ttk.Button(header, text="About", command=self.show_about).grid(row=0, column=2)
+
+        directories = ttk.Frame(frame, style="Card.TFrame", padding=(18, 14))
+        directories.grid(row=1, sticky="ew")
+        directories.columnconfigure(0, weight=1)
+        ttk.Label(directories, text="Dataset & destination", style="Section.TLabel").grid(
+            row=0, sticky="w", pady=(0, 10)
         )
         self.input_entry, self.input_browse = self._directory_row(
-            frame, 2, "Input directory", self.input_path, True
+            directories, 1, "Input folder", self.input_path, True
         )
         self.output_entry, self.output_browse = self._directory_row(
-            frame, 3, "Output directory", self.output_path, False
+            directories, 2, "Output folder", self.output_path, False
         )
         self.input_entry.bind("<FocusOut>", lambda _: self._scan_changed_input())
         self.input_entry.bind("<Return>", lambda _: self.scan())
-        options = ttk.Frame(frame)
-        options.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+        ttk.Label(
+            directories,
+            text="Choose an empty folder outside the input folder, or create a new one.",
+            style="CardMuted.TLabel",
+        ).grid(row=3, sticky="w", pady=(0, 8))
+        options = ttk.Frame(directories, style="Card.TFrame")
+        options.grid(row=4, column=0, sticky="ew")
         options.columnconfigure(0, weight=1)
         self.recursive_check = ttk.Checkbutton(
             options,
-            text="Include subdirectories",
+            text="Include subfolders",
             variable=self.recursive,
             command=self._scan_changed_input,
         )
         self.recursive_check.grid(row=0, column=0, sticky="w")
         self.scan_button = ttk.Button(options, text="Scan input", command=self.scan)
         self.scan_button.grid(row=0, column=1, sticky="e")
-        ttk.Label(frame, textvariable=self.scan_summary, wraplength=650).grid(
-            row=5, sticky="w", pady=(8, 8)
-        )
-        self.advanced_button = ttk.Button(
-            frame, text="Advanced options ▸", command=self.toggle_advanced
-        )
-        self.advanced_button.grid(row=6, sticky="w", pady=(0, 4))
-        self._advanced_window = tk.Toplevel(self)
-        self._advanced_window.title("Advanced options")
-        self._advanced_window.transient(self)
-        self._advanced_window.withdraw()
-        self._advanced_window.columnconfigure(0, weight=1)
-        self._advanced_window.protocol("WM_DELETE_WINDOW", self.toggle_advanced)
-        self.settings = AdvancedSettings(self._advanced_window)
-        self.settings.grid(row=0, sticky="ew", padx=10, pady=10)
-        ttk.Button(
-            self._advanced_window,
-            text="Done",
-            command=self.toggle_advanced,
-        ).grid(row=1, sticky="e", padx=24, pady=(0, 18))
+        ttk.Label(
+            directories, textvariable=self.scan_summary, style="CardMuted.TLabel", wraplength=700
+        ).grid(row=5, sticky="w", pady=(8, 0))
+
         actions = ttk.Frame(frame)
-        actions.grid(row=8, sticky="ew", pady=(10, 12))
+        actions.grid(row=2, sticky="ew", pady=(12, 12))
         actions.columnconfigure(0, weight=1)
-        self.start_button = ttk.Button(actions, text="De-identify", command=self.process)
-        self.start_button.grid(row=0, column=0, sticky="w", ipadx=18, ipady=4)
+        self.advanced_button = ttk.Button(
+            actions, text="Advanced options", command=self.toggle_advanced
+        )
+        self.advanced_button.grid(row=0, sticky="w")
+        self.start_button = ttk.Button(
+            actions, text="De-identify", command=self.process, style="Primary.TButton"
+        )
+        self.start_button.grid(row=0, column=1, sticky="e")
         self.cancel_button = ttk.Button(
             actions, text="Cancel", command=self.cancel, state="disabled"
         )
-        self.cancel_button.grid(row=0, column=1, padx=(8, 0))
-        self.progress = ttk.Progressbar(frame, maximum=100, mode="determinate")
-        self.progress.grid(row=9, sticky="ew")
-        ttk.Label(frame, textvariable=self.counts).grid(row=10, sticky="w", pady=(4, 6))
-        ttk.Label(frame, textvariable=self.status, wraplength=650).grid(
-            row=11, sticky="w", pady=(0, 8)
-        )
-        self.details = ScrolledText(
-            frame, height=9, width=60, wrap="word", font="TkTextFont", state="disabled"
-        )
-        self.details.grid(row=12, sticky="nsew")
-        footer = ttk.Frame(frame)
-        footer.grid(row=13, sticky="ew", pady=(12, 0))
-        footer.columnconfigure(0, weight=1)
-        ttk.Label(footer, text="Privacy review required before sharing.", wraplength=450).grid(
-            row=0, sticky="w"
+        self.cancel_button.grid(row=0, column=2, padx=(8, 0))
+        self._advanced_window = tk.Toplevel(self)
+        self._advanced_window.title("Advanced options")
+        self._advanced_window.configure(background=BACKGROUND)
+        self._advanced_window.transient(self)
+        self._advanced_window.withdraw()
+        self._advanced_window.columnconfigure(0, weight=1)
+        self._advanced_window.resizable(False, False)
+        self._advanced_window.protocol("WM_DELETE_WINDOW", self.toggle_advanced)
+        self.settings = AdvancedSettings(self._advanced_window)
+        self.settings.grid(row=0, sticky="ew", padx=20, pady=20)
+        ttk.Button(
+            self._advanced_window,
+            text="Done",
+            style="Primary.TButton",
+            command=self.toggle_advanced,
+        ).grid(row=1, sticky="e", padx=20, pady=(0, 20))
+
+        results = ttk.Frame(frame, style="Card.TFrame", padding=(18, 14))
+        results.grid(row=4, sticky="nsew")
+        results.columnconfigure(0, weight=1)
+        results.rowconfigure(4, weight=1)
+        ttk.Label(results, text="Activity & findings", style="Section.TLabel").grid(
+            row=0, column=0, sticky="w"
         )
         self.save_button = ttk.Button(
-            footer, text="Save report…", command=self.save_report, state="disabled"
+            results, text="Save report…", command=self.save_report, state="disabled"
         )
         self.save_button.grid(row=0, column=1, sticky="e")
+        ttk.Label(results, textvariable=self.status, style="Card.TLabel", wraplength=700).grid(
+            row=1, columnspan=2, sticky="w", pady=(10, 8)
+        )
+        self.progress = ttk.Progressbar(results, maximum=100, mode="determinate")
+        self.progress.grid(row=2, columnspan=2, sticky="ew")
+        ttk.Label(results, textvariable=self.counts, style="CardMuted.TLabel").grid(
+            row=3, columnspan=2, sticky="w", pady=(6, 8)
+        )
+        details_frame = ttk.Frame(results, style="Card.TFrame")
+        details_frame.grid(row=4, columnspan=2, sticky="nsew")
+        details_frame.columnconfigure(0, weight=1)
+        details_frame.rowconfigure(0, weight=1)
+        self.details = tk.Text(
+            details_frame,
+            height=5,
+            width=60,
+            wrap="word",
+            font="TkTextFont",
+            state="disabled",
+            relief="flat",
+            borderwidth=0,
+            background=SURFACE,
+            foreground=MUTED,
+            selectbackground="#DCE8F2",
+            selectforeground=TEXT,
+            highlightthickness=0,
+            spacing1=3,
+            spacing3=5,
+        )
+        self.details.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(details_frame, orient="vertical", command=self.details.yview)
+        scroll.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        self.details.configure(yscrollcommand=scroll.set)
+        ttk.Label(
+            frame, text="Pixels are preserved. Review privacy before sharing.", style="Muted.TLabel"
+        ).grid(row=5, sticky="w", pady=(10, 0))
         self._set_details(
             "All processing stays on this computer.\n\n"
-            "Pixels are preserved, including any burned-in identifying text. "
-            "Automated checks do not establish that a dataset is safe to share."
+            "Choose an input folder to see the file count and any findings. "
+            "Identifying text in images is not removed."
         )
+        # Keep wrapped text inside the window at the minimum supported size.
+        directories.bind(
+            "<Configure>", lambda event: self._wrap_labels(directories, event.width - 40)
+        )
+        results.bind("<Configure>", lambda event: self._wrap_labels(results, event.width - 40))
         self.after(80, self._poll)
 
     def _directory_row(
@@ -141,15 +236,26 @@ class App(tk.Tk):
         variable: tk.StringVar,
         is_input: bool,
     ) -> tuple[ttk.Entry, ttk.Button]:
-        area = ttk.Frame(parent)
-        area.grid(row=row, sticky="ew", pady=(0, 10))
+        area = ttk.Frame(parent, style="Card.TFrame")
+        area.grid(row=row, sticky="ew", pady=(0, 8))
         area.columnconfigure(0, weight=1)
-        ttk.Label(area, text=label).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(area, text=label, style="Field.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 4)
+        )
         entry = ttk.Entry(area, textvariable=variable)
         entry.grid(row=1, column=0, sticky="ew")
         browse = ttk.Button(area, text="Browse…", command=lambda: self._browse(variable, is_input))
         browse.grid(row=1, column=1, padx=(8, 0))
+        if not is_input:
+            self.output_new = ttk.Button(area, text="New folder…", command=self._new_output_folder)
+            self.output_new.grid(row=1, column=2, padx=(8, 0))
         return entry, browse
+
+    @staticmethod
+    def _wrap_labels(parent: tk.Misc, width: int) -> None:
+        for child in parent.winfo_children():
+            if isinstance(child, ttk.Label):
+                child.configure(wraplength=max(200, width))
 
     def _browse(self, variable: tk.StringVar, is_input: bool) -> None:
         selected = filedialog.askdirectory(
@@ -164,15 +270,103 @@ class App(tk.Tk):
             if is_input:
                 self.scan()
 
+    def _new_output_folder(self) -> None:
+        if self._busy:
+            return
+        if self._folder_window is not None:
+            self._folder_window.lift()
+            return
+        selected = self.output_path.get().strip() or self.input_path.get().strip()
+        initial = Path(selected).expanduser().parent if selected else Path.home()
+        if not initial.is_dir():
+            initial = Path.home()
+        window = tk.Toplevel(self)
+        self._folder_window = window
+        window.title("Create output folder")
+        window.transient(self)
+        window.configure(background=SURFACE)
+        window.resizable(False, False)
+        body = ttk.Frame(window, style="Card.TFrame", padding=24)
+        body.grid(sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        ttk.Label(body, text="Create output folder", style="Section.TLabel").grid(
+            row=0, columnspan=2, sticky="w"
+        )
+        ttk.Label(
+            body, text="Choose where to put the de-identified dataset.", style="CardMuted.TLabel"
+        ).grid(row=1, columnspan=2, sticky="w", pady=(6, 20))
+        parent = tk.StringVar(value=str(initial))
+        name = tk.StringVar(value="deidentified")
+        error = tk.StringVar()
+        ttk.Label(body, text="Parent folder", style="Field.TLabel").grid(row=2, sticky="w")
+        ttk.Entry(body, textvariable=parent, width=44).grid(row=3, sticky="ew", pady=(6, 16))
+
+        def browse_parent() -> None:
+            location = filedialog.askdirectory(
+                parent=window, title="Choose parent folder", initialdir=parent.get(), mustexist=True
+            )
+            if location:
+                parent.set(location)
+
+        ttk.Button(body, text="Browse…", command=browse_parent).grid(
+            row=3, column=1, padx=(8, 0), pady=(6, 16)
+        )
+        ttk.Label(body, text="New folder name", style="Field.TLabel").grid(row=4, sticky="w")
+        entry = ttk.Entry(body, textvariable=name)
+        entry.grid(row=5, columnspan=2, sticky="ew", pady=(6, 0))
+        ttk.Label(body, textvariable=error, style="CardMuted.TLabel", wraplength=480).grid(
+            row=6, columnspan=2, sticky="w", pady=(10, 12)
+        )
+        buttons = ttk.Frame(body, style="Card.TFrame")
+        buttons.grid(row=7, columnspan=2, sticky="e")
+
+        def dismiss() -> None:
+            self._folder_window = None
+            window.destroy()
+
+        def create() -> None:
+            try:
+                destination = create_output_folder(parent.get(), name.get(), self.input_path.get())
+            except ValueError as exc:
+                error.set(str(exc))
+                return
+            except FileExistsError:
+                error.set(
+                    "That folder already exists. Choose another name, or use Browse in the main window."
+                )
+                return
+            except OSError:
+                error.set(
+                    "Could not create the folder. Check the parent location and write permissions."
+                )
+                return
+            self.output_path.set(str(destination))
+            self.status.set(
+                "New empty output folder created. Ready when your input scan is complete."
+            )
+            dismiss()
+            self.output_entry.focus_set()
+
+        ttk.Button(buttons, text="Cancel", command=dismiss).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(buttons, text="Create folder", style="Primary.TButton", command=create).grid(
+            row=0, column=1
+        )
+        window.protocol("WM_DELETE_WINDOW", dismiss)
+        window.bind("<Escape>", lambda _: dismiss())
+        window.bind("<Return>", lambda _: create())
+        window.grab_set()
+        entry.focus_set()
+        entry.selection_range(0, "end")
+
     def toggle_advanced(self) -> None:
         self._advanced_visible = not self._advanced_visible
         if self._advanced_visible:
             self._advanced_window.deiconify()
             self._advanced_window.lift()
-            self.advanced_button.configure(text="Advanced options ▾")
+            self.advanced_button.configure(text="Close advanced options")
         else:
             self._advanced_window.withdraw()
-            self.advanced_button.configure(text="Advanced options ▸")
+            self.advanced_button.configure(text="Advanced options")
 
     def _scan_changed_input(self) -> None:
         selection = (self.input_path.get(), self.recursive.get())
@@ -193,6 +387,7 @@ class App(tk.Tk):
             self.output_entry,
             self.input_browse,
             self.output_browse,
+            self.output_new,
             self.recursive_check,
             self.scan_button,
             self.start_button,
@@ -321,9 +516,7 @@ class App(tk.Tk):
                     if value.ok and value.total
                     else "Input needs attention. Review the scan findings below."
                 )
-                findings = "\n".join(
-                    f"{finding.severity}: {finding.message}" for finding in value.findings
-                )
+                findings = format_findings(value.findings)
                 self._set_details(
                     findings
                     or "Preliminary scan complete. Full validation runs during de-identification."
@@ -396,6 +589,7 @@ class App(tk.Tk):
     def show_about(self) -> None:
         window = tk.Toplevel(self)
         window.title("About OpenDICOM De-ID")
+        window.configure(background=BACKGROUND)
         window.geometry("680x500")
         window.transient(self)
         window.columnconfigure(0, weight=1)
@@ -407,11 +601,23 @@ class App(tk.Tk):
             "BSD-3-Clause · Automated checks are not proof of privacy or regulatory compliance.",
             wraplength=630,
         ).grid(row=0, sticky="ew")
-        text = ScrolledText(window, wrap="word", font="TkTextFont", padx=12, pady=12)
+        text = ScrolledText(
+            window,
+            wrap="word",
+            font="TkTextFont",
+            padx=12,
+            pady=12,
+            background=SURFACE,
+            foreground=TEXT,
+            relief="flat",
+            borderwidth=0,
+        )
         text.grid(row=1, sticky="nsew", padx=16)
         text.insert("1.0", license_text())
         text.configure(state="disabled")
-        ttk.Button(window, text="Close", command=window.destroy).grid(row=2, pady=12)
+        ttk.Button(window, text="Close", command=window.destroy, style="Primary.TButton").grid(
+            row=2, pady=12
+        )
 
     def close(self) -> None:
         if self._busy:
@@ -429,6 +635,15 @@ def check_startup() -> None:
         app.toggle_advanced()
         app.update()
         app.toggle_advanced()
+        app._new_output_folder()
+        app.update()
+        assert app._folder_window is not None
+        # Exercise the same close callback as the window manager. No folder is
+        # created by this startup check, including on frozen CI builds.
+        app.tk.call(app._folder_window.protocol("WM_DELETE_WINDOW"))
+        app.update()
+        assert app._folder_window is None
+        assert app.grab_current() is None
     finally:
         app.destroy()
 

@@ -48,13 +48,19 @@ def structural_error(ds: Dataset) -> str | None:
     deliberately accepted without Rows/Columns/PixelData; their numbers are still
     included in the source/output preservation checks.
     """
+    sop_class = str(ds.SOPClassUID)
     pixels = [key for key in ("PixelData", "FloatPixelData", "DoubleFloatPixelData") if key in ds]
     if len(pixels) > 1:
         return "An object has conflicting pixel representations."
     if not pixels:
-        if str(ds.SOPClassUID) == "1.2.840.10008.5.1.4.1.1.4.2":
+        if sop_class == "1.2.840.10008.5.1.4.1.1.4.2":
             return None if ds.get("SpectroscopyData") else "An MR spectroscopy object lacks its data."
-        if ds.get("Modality") not in {"RTSTRUCT", "RTPLAN", "RTDOSE"}:
+        if sop_class not in {
+            "1.2.840.10008.5.1.4.1.1.481.2",  # RT Dose
+            "1.2.840.10008.5.1.4.1.1.481.3",  # RT Structure Set
+            "1.2.840.10008.5.1.4.1.1.481.5",  # RT Plan
+            "1.2.840.10008.5.1.4.1.1.481.8",  # RT Ion Plan
+        }:
             return "An image object lacks pixel data."
         return None
     try:
@@ -76,7 +82,7 @@ def structural_error(ds: Dataset) -> str | None:
             expected = get_expected_length(ds, unit="bytes")
             if len(value) not in {expected, expected + (expected % 2)}:
                 return "The pixel byte count does not match the image dimensions."
-        if ds.get("Modality") == "RTDOSE":
+        if sop_class == "1.2.840.10008.5.1.4.1.1.481.2":
             scaling = float(ds.get("DoseGridScaling", 0))
             if not math.isfinite(scaling) or scaling <= 0:
                 return "A grid dose lacks a finite, positive dose grid scaling factor."

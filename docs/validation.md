@@ -24,6 +24,36 @@ every vendor-specific characteristic of the original files.
 
 ## Other automated checks
 
+### Secondary Capture source modalities
+
+The TCIA evaluation collection includes 57 mammography images stored using
+Secondary Capture Image Storage (`Modality=MG`). The earlier scanner incorrectly
+rejected this combination. Secondary Capture Modality is optional and describes
+the source of the captured image, as specified by
+[DICOM PS3.3 C.8.6.1](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.6.html).
+Both scanning and saved-output validation now accept these semantics for all
+five supported Secondary Capture storage classes. Pixel requirements are based
+on the storage class; a capture labelled RTPLAN cannot bypass image checks.
+
+Synthetic regressions cover MG and RF source modalities, optional absent/empty
+values, supported single/multi-frame encodings, unchanged pixel bytes and
+modality values, malformed/multivalued codes, and safe labels for extension
+codes. Repeated findings are grouped in the text summary; JSON retains every
+individual finding.
+
+The compatibility investigation queried a representative instance's metadata
+from each of the evaluation collection's 26 series using TCIA's public API.
+No image pixels or complete DICOM files were downloaded. This established the
+SOP-class/modality mismatch, **not full processing or privacy validation of the
+collection**. All regression fixtures remain programmatically generated.
+
+Dataset attribution: Rutherford, M., et al. (2021), *A DICOM dataset for
+evaluation of medical image de-identification (Pseudo-PHI-DICOM-Data)*,
+The Cancer Imaging Archive, [doi:10.7937/s17z-r072](https://doi.org/10.7937/s17z-r072),
+CC BY 4.0. [Collection and access details](https://www.cancerimagingarchive.net/collection/pseudo-phi-dicom-data/).
+
+### Integrity and privacy checks
+
 The suite covers CT, MR, RTIMAGE, grid and legacy non-grid RTDOSE; patient identity
 and issuer grouping; multiple studies; shared Study/Series/Frame of Reference
 UIDs; deeply nested and multivalued UIDs; preserved technical identifiers;
@@ -70,7 +100,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **103 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **158 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked.

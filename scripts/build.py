@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -143,7 +144,25 @@ def main() -> None:
         f"{digest}  {archive.name}\n",
         encoding="ascii",
     )
-    print(f"Created {archive.name}. No publisher signing or notarization was performed.")
+    application = ROOT / "dist" / (
+        f"{APP_NAME}.app" if system == "Darwin"
+        else f"{APP_NAME}.exe" if system == "Windows"
+        else f"{APP_NAME}/{APP_NAME}"
+    )
+    print(f"\nBuild complete.\nApplication: {application}\nArchive: {archive}")
+    if system == "Windows":
+        print(f"Start the GUI by double-clicking {application.name} in dist/.")
+    else:
+        launch = shlex.quote(str(application))
+        if system == "Darwin":
+            launch = f"open {launch}"
+        print(f"Start the GUI:\n  {launch}")
+    if system == "Linux":
+        print(
+            f"Keep the entire dist/{APP_NAME}/ folder together, including _internal/.\n"
+            "The build/ directory contains intermediate files; launch from dist/."
+        )
+    print("No publisher signing or notarization was performed.")
 
 
 if __name__ == "__main__":

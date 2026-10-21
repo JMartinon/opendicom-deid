@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.0 is an initial validation release.** Automated checks do not prove
+**Version 0.1.1 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -42,6 +42,7 @@ The illustration uses synthetic counts; it is not a clinical validation result.
 
 1. Choose the input directory. A preliminary scan counts DICOM files and modalities.
 2. Choose a **new or empty** output directory, outside the input directory tree.
+   Use **New folder…** beside the output field to create and select a folder.
 3. Leave the defaults in place, or expand **Advanced options**.
 4. Click **De-identify**. You can cancel while the interface remains responsive.
 5. Read the findings, save a report if needed, and perform a privacy review.
@@ -163,9 +164,21 @@ create a package and SHA-256 checksum in `dist/release/`. Build-time dependency
 installation uses the network; the application itself performs no network
 operations. Dependencies are pinned for DICOM behavior in `pyproject.toml`.
 
+After a Linux build, start the application from the repository root with:
+
+```sh
+./dist/OpenDICOM-De-ID/OpenDICOM-De-ID
+```
+
+`dist/` contains the finished application; `build/` contains intermediate build
+files. Keep the entire `dist/OpenDICOM-De-ID/` directory together, including
+`_internal/`, which contains its runtime. For another computer, share the archive
+in `dist/release/` and extract the whole archive before opening the application.
+The build script prints the full launch and archive paths when it finishes.
+
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.0`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.1`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

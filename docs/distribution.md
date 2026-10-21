@@ -55,8 +55,9 @@ policy, use the macOS **Privacy & Security** settings to allow the verified app.
 Do not disable Gatekeeper globally. Minimum OS compatibility depends on the
 Python/Tcl/Tk runtime used to build the artifact; the CI targets macOS 15.
 
-**Ubuntu:** extract the entire archive and keep its files together. Open the
-`OpenDICOM-De-ID` executable from your file manager. The supplied `.desktop`
+**Ubuntu:** extract the entire archive and keep its files together, including
+the `_internal/` directory containing the runtime. Open the `OpenDICOM-De-ID`
+executable inside the extracted folder from your file manager. The supplied `.desktop`
 launcher may require **Allow Launching** or marking the file as trusted. The CI
 build targets Ubuntu 24.04 or newer (glibc 2.39); X11/XWayland and the usual
 desktop libraries must be available. No AppImage or system installer is
@@ -80,6 +81,27 @@ The wrappers install `.[build,dev]`, run pytest, and invoke `scripts/build.py`.
 A missing dependency license causes the build to fail. `dist/release/` receives
 the archive and SHA-256 file. Linux interpreter selection and Tk checks are
 described below.
+
+### Launch after a local build
+
+The completed application is in `dist/`; `build/` holds intermediate files used
+by the packaging tools. The build script prints the exact application path and
+launch command at completion.
+
+On Linux, run this from the repository root:
+
+```sh
+./dist/OpenDICOM-De-ID/OpenDICOM-De-ID
+```
+
+Keep the executable together with `dist/OpenDICOM-De-ID/_internal/` and the
+other files in that folder. Launching the intermediate executable under
+`build/pyinstaller/` causes a missing Python shared-library error because that
+directory does not contain the bundled runtime.
+
+On Windows, double-click `dist/OpenDICOM-De-ID.exe`; on macOS, open
+`dist/OpenDICOM-De-ID.app`. To distribute an application, share its archive from
+`dist/release/` and extract the complete archive on the destination computer.
 
 ### Linux build setup
 
@@ -134,7 +156,7 @@ changing Python distributions or adding dependencies. Build environments should
 be clean, with no patient files or optional clinical data packages installed.
 
 GitHub Actions test and build jobs contain synthetic tests only. Tagging a
-matching package version (for example `v0.1.0`) produces a **draft prerelease**.
+matching package version (for example `v0.1.1`) produces a **draft prerelease**.
 Review artifacts before publishing the draft. Signing and notarization require
 separately configured credentials and are not part of these workflows.
 

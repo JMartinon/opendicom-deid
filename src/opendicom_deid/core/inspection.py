@@ -59,7 +59,7 @@ _CLINICAL_BINARY_TAGS = {
     0x56000010, 0x56000020,  # spectroscopy phase correction and spectroscopy payload
 }
 _CLINICAL_TEXT = {
-    "PhotometricInterpretation", "RescaleType", "DoseUnits", "DoseType",
+    "Modality", "PhotometricInterpretation", "RescaleType", "DoseUnits", "DoseType",
     "DoseSummationType", "RTROIInterpretedType", "ContourGeometricType",
     "BeamType", "RadiationType", "TreatmentDeliveryType", "RTBeamLimitingDeviceType",
     "PatientPosition", "PixelRepresentation",

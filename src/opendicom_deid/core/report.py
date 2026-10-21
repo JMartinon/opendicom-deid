@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
+from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -11,6 +12,37 @@ from typing import Literal
 from opendicom_deid import __version__
 
 from .models import Finding
+
+
+def format_findings(findings: Iterable[Finding]) -> str:
+    """Group repeated display messages without exposing per-file identifiers.
+
+    Keep the first-occurrence order and distinguish different check codes even
+    when their messages match. The underlying findings remain available in full
+    for JSON export.
+    """
+    counts: Counter[tuple[str, str, str]] = Counter()
+    files: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for finding in findings:
+        key = (finding.severity, finding.code, finding.message)
+        counts[key] += 1
+        if finding.file_id is not None:
+            files[key].add(finding.file_id)
+
+    lines = []
+    for key, count in counts.items():
+        severity, _, message = key
+        suffix = ""
+        if count > 1:
+            file_count = len(files[key])
+            affected = (
+                f"; {file_count} {'file' if file_count == 1 else 'files'}"
+                if file_count
+                else ""
+            )
+            suffix = f" ({count} occurrences{affected})"
+        lines.append(f"{severity}: {message}{suffix}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -49,7 +81,8 @@ class Report:
         lines.append(
             f"Checks: {counts['PASS']} passed, {counts['WARNING']} warnings, {counts['FAIL']} failed"
         )
-        lines.extend(f"{f.severity}: {f.message}" for f in self.findings)
+        if self.findings:
+            lines.append(format_findings(self.findings))
         lines.extend([
             "Privacy review: REQUIRED",
             "Pixels are unchanged. Review burned-in text, recognizable anatomy, free text, "

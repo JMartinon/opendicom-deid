@@ -13,43 +13,13 @@ from pydicom.uid import UID
 from .inspection import capture_snapshot
 from .models import FileRecord, Finding, Progress, ProgressCallback, ScanResult, check_cancel
 from .reader import ReadError, file_digest, looks_like_dicom, read_dicom
+from .sop_classes import (
+    KNOWN_MODALITIES,
+    SUPPORTED_SOP_CLASSES,
+    modality_error,
+    modality_label,
+)
 from .structure import structural_error
-
-# Deliberate initial scope: image and conventional radiotherapy storage objects.
-# SR, documents, waveforms, DICOMDIR, private/unknown SOP classes require dedicated cleaning.
-SUPPORTED_SOP_CLASSES: dict[str, frozenset[str]] = {
-    "1.2.840.10008.5.1.4.1.1.1": frozenset({"CR"}),
-    "1.2.840.10008.5.1.4.1.1.1.1": frozenset({"DX"}),
-    "1.2.840.10008.5.1.4.1.1.1.1.1": frozenset({"DX"}),
-    "1.2.840.10008.5.1.4.1.1.1.2": frozenset({"MG"}),
-    "1.2.840.10008.5.1.4.1.1.1.2.1": frozenset({"MG"}),
-    "1.2.840.10008.5.1.4.1.1.2": frozenset({"CT"}),
-    "1.2.840.10008.5.1.4.1.1.2.1": frozenset({"CT"}),
-    "1.2.840.10008.5.1.4.1.1.2.2": frozenset({"CT"}),
-    "1.2.840.10008.5.1.4.1.1.3.1": frozenset({"US"}),
-    "1.2.840.10008.5.1.4.1.1.4": frozenset({"MR"}),
-    "1.2.840.10008.5.1.4.1.1.4.1": frozenset({"MR"}),
-    "1.2.840.10008.5.1.4.1.1.4.2": frozenset({"MR"}),
-    "1.2.840.10008.5.1.4.1.1.4.3": frozenset({"MR"}),
-    "1.2.840.10008.5.1.4.1.1.4.4": frozenset({"MR"}),
-    "1.2.840.10008.5.1.4.1.1.6.1": frozenset({"US"}),
-    "1.2.840.10008.5.1.4.1.1.6.2": frozenset({"US"}),
-    "1.2.840.10008.5.1.4.1.1.7": frozenset({"OT", "CT", "MR", "US", "NM", "PT", "DX", "CR"}),
-    "1.2.840.10008.5.1.4.1.1.7.1": frozenset({"OT"}),
-    "1.2.840.10008.5.1.4.1.1.7.2": frozenset({"OT"}),
-    "1.2.840.10008.5.1.4.1.1.7.3": frozenset({"OT"}),
-    "1.2.840.10008.5.1.4.1.1.7.4": frozenset({"OT"}),
-    "1.2.840.10008.5.1.4.1.1.12.1": frozenset({"XA"}),
-    "1.2.840.10008.5.1.4.1.1.12.2": frozenset({"RF"}),
-    "1.2.840.10008.5.1.4.1.1.20": frozenset({"NM"}),
-    "1.2.840.10008.5.1.4.1.1.128": frozenset({"PT"}),
-    "1.2.840.10008.5.1.4.1.1.130": frozenset({"PT"}),
-    "1.2.840.10008.5.1.4.1.1.481.1": frozenset({"RTIMAGE"}),
-    "1.2.840.10008.5.1.4.1.1.481.2": frozenset({"RTDOSE"}),
-    "1.2.840.10008.5.1.4.1.1.481.3": frozenset({"RTSTRUCT"}),
-    "1.2.840.10008.5.1.4.1.1.481.5": frozenset({"RTPLAN"}),
-    "1.2.840.10008.5.1.4.1.1.481.8": frozenset({"RTPLAN"}),
-}
 
 
 def patient_key(ds: Dataset) -> tuple[str, ...]:
@@ -129,17 +99,23 @@ def scan_directory(
                 progress(Progress("Scanning", index, len(paths)))
             continue
         sop_class = str(ds.SOPClassUID)
-        modality = str(ds.get("Modality", ""))
+        modality = modality_label(ds)
         if sop_class not in SUPPORTED_SOP_CLASSES:
             result.findings.append(Finding(
                 "FAIL", "UNSUPPORTED_OBJECT", "An unsupported DICOM object requires specialized handling.", label
             ))
             continue
-        if modality not in SUPPORTED_SOP_CLASSES[sop_class]:
+        if problem := modality_error(ds):
             result.findings.append(Finding(
-                "FAIL", "MODALITY", "The modality is missing or inconsistent with the SOP class.", label
+                "FAIL", "MODALITY", problem, label
             ))
             continue
+        if ds.get("Modality") and str(ds.Modality).strip() not in KNOWN_MODALITIES:
+            result.findings.append(Finding(
+                "WARNING", "UNRECOGNIZED_MODALITY",
+                "A source modality uses an extension code. It is preserved unchanged; "
+                "review vendor-specific metadata before sharing.", label
+            ))
         structure_problem = structural_error(ds)
         if structure_problem:
             result.findings.append(Finding("FAIL", "INVALID_STRUCTURE", structure_problem, label))
@@ -174,7 +150,7 @@ def scan_directory(
         identity = patient_key(ds)
         record = FileRecord(source, label, source.parent.relative_to(root), before_hash, snapshot, identity, modality)
         result.files.append(record)
-        if modality == "RTDOSE" and "PixelData" not in ds:
+        if sop_class == "1.2.840.10008.5.1.4.1.1.481.2" and "PixelData" not in ds:
             result.findings.append(Finding(
                 "WARNING", "NON_GRID_DOSE",
                 "A dose object has no image grid. Its non-grid dose content is preserved; review it in a compatible viewer.", label

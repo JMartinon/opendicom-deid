@@ -30,6 +30,7 @@ from .models import (
 from .policy import metadata_issues
 from .reader import looks_like_dicom, read_dicom
 from .report import Report
+from .sop_classes import SUPPORTED_SOP_CLASSES, modality_error, modality_label
 from .structure import structural_error
 
 
@@ -73,13 +74,12 @@ def _metadata_findings(
         findings.append(_finding(
             "FAIL", "RESIDUAL_FILE_METADATA", "Unexpected preamble or file metadata remains.", file_id
         ))
-    from .scanner import SUPPORTED_SOP_CLASSES
-    if snapshot.sop_class_uid not in SUPPORTED_SOP_CLASSES or str(ds.get("Modality", "")) not in (
-        SUPPORTED_SOP_CLASSES.get(snapshot.sop_class_uid, frozenset())
-    ):
+    if snapshot.sop_class_uid not in SUPPORTED_SOP_CLASSES:
         findings.append(_finding(
             "FAIL", "UNSUPPORTED_OBJECT", "An unsupported or inconsistent DICOM object was found.", file_id
         ))
+    elif problem := modality_error(ds):
+        findings.append(_finding("FAIL", "MODALITY", problem, file_id))
     if snapshot.private_count:
         findings.append(_finding(
             "FAIL", "PRIVATE_TAGS", "Unexpected private metadata remains in the output.", file_id
@@ -373,7 +373,7 @@ def validate_batch(
         ))
     if not failures.intersection({
         "FILE_META_MISMATCH", "PRIVATE_TAGS", "RESIDUAL_METADATA", "INVALID_UID",
-        "RESIDUAL_FILE_METADATA", "UNSUPPORTED_OBJECT",
+        "RESIDUAL_FILE_METADATA", "UNSUPPORTED_OBJECT", "MODALITY",
         "INVALID_STRUCTURE",
         "PATIENT_PSEUDONYM", "DEIDENTIFICATION_MARKERS", "TECHNICAL_UID_CHANGED",
         "TRANSFER_SYNTAX_CHANGED", "DATE_POLICY",
@@ -414,10 +414,7 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
             continue
         report.input_count += 1
         report.output_count += 1
-        modality = str(ds.get("Modality", "OTHER"))
-        # A hostile unknown modality value must not become report content.
-        modality = modality if modality in {"CT", "MR", "RTDOSE", "RTSTRUCT", "RTPLAN", "RTIMAGE",
-                                            "CR", "DX", "US", "NM", "PT", "SC"} else "OTHER"
+        modality = modality_label(ds)
         report.modalities[modality] = report.modalities.get(modality, 0) + 1
         snapshots.append(snapshot)
         report.findings.extend(_metadata_findings(ds, snapshot, file_id))
