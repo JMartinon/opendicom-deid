@@ -7,6 +7,22 @@ import re
 from pydicom.dataset import Dataset
 from pydicom.uid import UID, UID_dictionary
 
+# Exact class reported by a ViewRay export. Support is limited to its public
+# RT beam/control-point representation; this is not an assertion of equivalence
+# to standard RT Plan Storage. Preserve this UID, including class references.
+VIEWRAY_RT_PLAN_STORAGE = "2.16.840.1.114493.1.2.1.4.1.1.481.5"
+KNOWN_PRIVATE_STORAGE_CLASSES = {VIEWRAY_RT_PLAN_STORAGE: "ViewRay RT Plan (private storage)"}
+VIEWRAY_PLAN_WARNING = (
+    "ViewRay private RT plan: public beam/control-point data and references are checked; "
+    "vendor-private fields are removed. Proprietary treatment content may be lost. "
+    "Re-import into the treatment system and clinical completeness are not verified."
+)
+VIEWRAY_PLAN_REVIEW_REQUIRED = (
+    "This is a ViewRay private RT plan. Full proprietary plan preservation is unsupported. "
+    "For public DICOM data only, enable 'ViewRay public-data research export' in Advanced options "
+    "(--viewray-public-plan in the CLI). This removes vendor-private treatment fields."
+)
+
 # SC Modality describes the source of a capture and is optional (Type 3),
 # overriding General Series. PS3.3 C.8.6.1, Table C.8-24, Note 2:
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.6.html
@@ -18,7 +34,8 @@ SECONDARY_CAPTURE_CLASSES = frozenset({
     "1.2.840.10008.5.1.4.1.1.7.4",
 })
 
-# Deliberate scope: images and conventional radiotherapy storage objects.
+# Deliberate scope: images, conventional RT, and one gated public-data RT export.
+# Recognition here does not bypass the explicit ViewRay research-mode gate.
 # None means SC source modality semantics, not an unchecked storage class.
 SUPPORTED_SOP_CLASSES: dict[str, frozenset[str] | None] = {
     "1.2.840.10008.5.1.4.1.1.1": frozenset({"CR"}),
@@ -48,6 +65,7 @@ SUPPORTED_SOP_CLASSES: dict[str, frozenset[str] | None] = {
     "1.2.840.10008.5.1.4.1.1.481.3": frozenset({"RTSTRUCT"}),
     "1.2.840.10008.5.1.4.1.1.481.5": frozenset({"RTPLAN"}),
     "1.2.840.10008.5.1.4.1.1.481.8": frozenset({"RTPLAN"}),
+    VIEWRAY_RT_PLAN_STORAGE: frozenset({"RTPLAN"}),
 }
 
 # Known defined terms (including retired terms), PS3.3 C.7.3.1.1.1. This is a
@@ -68,6 +86,10 @@ def modality_label(ds: Dataset) -> str:
     if not value:
         return "Unspecified"
     return value if value in KNOWN_MODALITIES else "Other modality"
+
+
+def storage_class_name(sop_class: str) -> str:
+    return KNOWN_PRIVATE_STORAGE_CLASSES.get(sop_class) or UID(sop_class).name
 
 
 def unsupported_object_message(ds: Dataset) -> str:
@@ -102,14 +124,14 @@ def modality_error(ds: Dataset) -> str | None:
     if not modality:
         if sop_class in SECONDARY_CAPTURE_CLASSES:
             return None
-        return f"{UID(sop_class).name} requires a Modality (0008,0060) value."
+        return f"{storage_class_name(sop_class)} requires a Modality (0008,0060) value."
     if not isinstance(value, str) or re.fullmatch(r"[A-Z0-9_ ]{1,16}", modality) is None:
         return "Modality (0008,0060) must contain one valid DICOM code string."
     expected = SUPPORTED_SOP_CLASSES[sop_class]
     if expected is not None and modality not in expected:
         actual = modality if modality in KNOWN_MODALITIES else "an unrecognized value"
         return (
-            f"{UID(sop_class).name} expects Modality {', '.join(sorted(expected))}; "
+            f"{storage_class_name(sop_class)} expects Modality {', '.join(sorted(expected))}; "
             f"found {actual}."
         )
     return None

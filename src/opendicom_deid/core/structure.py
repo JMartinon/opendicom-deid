@@ -9,6 +9,90 @@ from pydicom.dataset import Dataset
 from pydicom.pixels.utils import get_expected_length
 from pydicom.uid import UID
 
+from .sop_classes import VIEWRAY_RT_PLAN_STORAGE
+
+
+def _whole_number(value) -> int:
+    number = int(value)
+    if float(value) != number:
+        raise ValueError
+    return number
+
+
+def _public_control_point_geometry(point: Dataset) -> bool:
+    """Require some readable public geometry, without asserting a complete IOD."""
+    present = False
+    if "GantryAngle" in point:
+        if not math.isfinite(float(point.GantryAngle)):
+            raise ValueError
+        present = True
+    if "IsocenterPosition" in point:
+        values = point.IsocenterPosition
+        if len(values) != 3 or not all(math.isfinite(float(value)) for value in values):
+            raise ValueError
+        present = True
+    if "BeamLimitingDevicePositionSequence" in point:
+        devices = point.BeamLimitingDevicePositionSequence
+        if not devices:
+            raise ValueError
+        for device in devices:
+            positions = device.get("LeafJawPositions")
+            if not positions or not all(math.isfinite(float(value)) for value in positions):
+                raise ValueError
+        present = True
+    return present
+
+
+def _viewray_public_plan_error(ds: Dataset) -> str | None:
+    """Bounded public-data export, never an alias or full vendor IOD validation.
+
+    Run after private attributes have been removed. Reject a shell whose only
+    treatment representation was private. Public beam/control-point semantics
+    follow PS3.3 C.8.8.14; this does not establish what private fields contained.
+    """
+    if any(key in ds for key in ("PixelData", "FloatPixelData", "DoubleFloatPixelData")):
+        return "The ViewRay public-plan export cannot handle a plan with an image payload."
+    beams = ds.get("BeamSequence")
+    if not beams:
+        return (
+            "The ViewRay plan has no public Beam Sequence after private fields are removed. "
+            "Its proprietary treatment representation requires specialized handling."
+        )
+    try:
+        beam_numbers: set[int] = set()
+        for beam in beams:
+            number = _whole_number(beam.BeamNumber)
+            if number < 1 or number in beam_numbers:
+                raise ValueError
+            beam_numbers.add(number)
+            points = beam.ControlPointSequence
+            count = _whole_number(beam.NumberOfControlPoints)
+            if count < 2 or count != len(points):
+                raise ValueError
+            weights = []
+            for index, point in enumerate(points):
+                if _whole_number(point.ControlPointIndex) != index:
+                    raise ValueError
+                weight = float(point.CumulativeMetersetWeight)
+                if not math.isfinite(weight) or weight < 0:
+                    raise ValueError
+                weights.append(weight)
+                has_geometry = _public_control_point_geometry(point)
+                if index == 0 and not has_geometry:
+                    raise ValueError
+            if weights[0] != 0 or weights[-1] <= 0 or weights != sorted(weights):
+                raise ValueError
+            if "FinalCumulativeMetersetWeight" in beam and not math.isclose(
+                float(beam.FinalCumulativeMetersetWeight), weights[-1], rel_tol=1e-7, abs_tol=1e-9
+            ):
+                raise ValueError
+    except (AttributeError, KeyError, ValueError, TypeError, OverflowError):
+        return (
+            "The ViewRay public beam/control-point representation is missing or inconsistent. "
+            "This export requires numbered beams, coherent control points, geometry, and meterset weights."
+        )
+    return None
+
 
 def _valid_encapsulation(value: bytes, frames: int) -> bool:
     """Check item boundaries and offset-table targets without decoding image content."""
@@ -49,6 +133,8 @@ def structural_error(ds: Dataset) -> str | None:
     included in the source/output preservation checks.
     """
     sop_class = str(ds.SOPClassUID)
+    if sop_class == VIEWRAY_RT_PLAN_STORAGE:
+        return _viewray_public_plan_error(ds)
     pixels = [key for key in ("PixelData", "FloatPixelData", "DoubleFloatPixelData") if key in ds]
     if len(pixels) > 1:
         return "An object has conflicting pixel representations."

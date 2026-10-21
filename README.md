@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.3 is an initial validation release.** Automated checks do not prove
+**Version 0.1.4 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -59,6 +59,34 @@ from several patients, those files are further separated into folders named with
 their generated patient pseudonyms. Empty folders and non-DICOM files are not copied.
 Turn off **Preserve patient folders and subfolders** in Advanced options only if
 you want a flat output directory (CLI: `--organization flat`).
+
+### ViewRay private RT plans
+
+The observed ViewRay RTPLAN class
+`2.16.840.1.114493.1.2.1.4.1.1.481.5` has an explicit **public-data research export**
+mode. In version 0.1.4 or newer, open **Advanced options**, enable **ViewRay
+public-data research export**, then run **De-identify** on the complete input
+tree. This setting is off by default because proprietary treatment fields are
+removed, and a full MRIdian plan or treatment-system re-import is unsupported.
+
+The mode requires public beam/control-point data with coherent numbers, counts,
+indexes, geometry, and meterset weights. It preserves the original private class
+UID in the plan, file meta, and references; remaps entity UIDs; and checks retained
+public RT values and relationships. It does **not** convert the file to standard
+RT Plan Storage. A viewer that does not support the original private class may
+still refuse the result. Empty or inconsistent public plans fail instead of
+publishing an incomplete public representation.
+
+Every accepted plan produces a warning about removal of proprietary fields.
+This is not verified full ViewRay support: the vendor class specification and
+real dataset have not been available for validation. All other unknown/private
+storage classes remain unsupported. See [scope and evidence](docs/validation.md#viewray-private-rt-plan-research-export).
+
+CLI equivalent (for public-data research only):
+
+```sh
+opendicom-deid deidentify /path/to/input /path/to/output --viewray-public-plan
+```
 
 Reports use a new `.json` filename and never overwrite an existing file. Saving
 inside the selected input tree is prohibited. Pseudonym and UID mappings exist
@@ -222,7 +250,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.3`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.4`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

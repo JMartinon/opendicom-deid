@@ -56,6 +56,11 @@ must be disjoint and output must be new or empty. `Report.status` is
 `COMPLETED`, `FAILED`, or `CANCELLED`; `Report.ok` also requires no `FAIL`
 findings. A successful report can contain warnings requiring user review.
 
+`Options(allow_viewray_public_plan=True)` is the explicit, default-off option
+for the observed ViewRay private plan's public-data research export. The preview
+scan has a matching keyword. It never enables arbitrary private classes or
+private-tag retention; see the policy's scope before enabling it.
+
 Independent output inspection has no original data or secret mapping. It can
 check parseability, metadata, duplicate UIDs, and references, but cannot prove
 pixel/geometry equivalence or identify which missing references predated a
@@ -88,9 +93,11 @@ before package import, avoiding example lookup/download behavior without
 changing the installed dependency or its DICOM processing implementation.
 
 `--check-gui` is a developer packaging check that creates the real main window,
-opens and closes Advanced options, and exits. The native build workflow runs it
-inside the packaged executable, followed by processing a synthetic CT/RTSTRUCT
-chain through that same executable. Only then are build artifacts uploaded.
+opens and closes Advanced options, and reads a synthetic header through the
+inspection dialog. The native build workflow runs it inside the packaged
+executable, followed by a synthetic CT/RTSTRUCT/ViewRay-plan/RTDOSE chain through
+that same executable. The research mode must fail with the default settings and
+succeed only with explicit opt-in. Only then are build artifacts uploaded.
 
 No automated check guarantees complete de-identification. Pixel annotations,
 recognizable anatomy, and unusual content require local human review.

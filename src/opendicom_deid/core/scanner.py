@@ -16,6 +16,9 @@ from .reader import ReadError, file_digest, looks_like_dicom, read_dicom
 from .sop_classes import (
     KNOWN_MODALITIES,
     SUPPORTED_SOP_CLASSES,
+    VIEWRAY_PLAN_REVIEW_REQUIRED,
+    VIEWRAY_PLAN_WARNING,
+    VIEWRAY_RT_PLAN_STORAGE,
     modality_error,
     modality_label,
     unsupported_object_message,
@@ -68,6 +71,8 @@ def scan_directory(
     recursive: bool = True,
     cancel: Event | None = None,
     progress: ProgressCallback | None = None,
+    *,
+    allow_viewray_public_plan: bool = False,
 ) -> ScanResult:
     """Inventory without retaining pixel buffers or writing identifiable intermediate files."""
     root = Path(path).expanduser().resolve()
@@ -111,6 +116,11 @@ def scan_directory(
                 "FAIL", "MODALITY", problem, label
             ))
             continue
+        if sop_class == VIEWRAY_RT_PLAN_STORAGE and not allow_viewray_public_plan:
+            result.findings.append(Finding(
+                "FAIL", "VIEWRAY_PLAN_REVIEW_REQUIRED", VIEWRAY_PLAN_REVIEW_REQUIRED, label
+            ))
+            continue
         if ds.get("Modality") and str(ds.Modality).strip() not in KNOWN_MODALITIES:
             result.findings.append(Finding(
                 "WARNING", "UNRECOGNIZED_MODALITY",
@@ -151,6 +161,10 @@ def scan_directory(
         identity = patient_key(ds)
         record = FileRecord(source, label, source.parent.relative_to(root), before_hash, snapshot, identity, modality)
         result.files.append(record)
+        if sop_class == VIEWRAY_RT_PLAN_STORAGE:
+            result.findings.append(Finding(
+                "WARNING", "VIEWRAY_PRIVATE_PLAN", VIEWRAY_PLAN_WARNING, label
+            ))
         if sop_class == "1.2.840.10008.5.1.4.1.1.481.2" and "PixelData" not in ds:
             result.findings.append(Finding(
                 "WARNING", "NON_GRID_DOSE",

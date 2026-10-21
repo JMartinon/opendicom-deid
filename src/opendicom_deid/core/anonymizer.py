@@ -104,7 +104,10 @@ def process_batch(
     try:
         check_cancel(cancel)
         source, destination = check_directories(input_dir, output_dir)
-        scan = scan_directory(source, options.recursive, cancel, progress)
+        scan = scan_directory(
+            source, options.recursive, cancel, progress,
+            allow_viewray_public_plan=options.allow_viewray_public_plan,
+        )
         report.input_count = scan.total
         report.modalities = scan.modalities
         report.findings.extend(scan.findings)

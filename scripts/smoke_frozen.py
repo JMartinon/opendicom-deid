@@ -1,4 +1,4 @@
-"""Exercise the packaged executable with a tiny synthetic CT/RTSTRUCT chain."""
+"""Exercise a packaged executable with a synthetic CT/RT/ViewRay public-plan chain."""
 
 from __future__ import annotations
 
@@ -10,7 +10,16 @@ from pathlib import Path
 
 import pydicom
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
-from pydicom.uid import CTImageStorage, ExplicitVRLittleEndian, RTStructureSetStorage, generate_uid
+from pydicom.uid import (
+    CTImageStorage,
+    ExplicitVRLittleEndian,
+    ImplicitVRLittleEndian,
+    RTDoseStorage,
+    RTStructureSetStorage,
+    generate_uid,
+)
+
+from opendicom_deid.core.sop_classes import VIEWRAY_RT_PLAN_STORAGE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +38,10 @@ def main() -> None:
         source.mkdir()
         study, frame = generate_uid(), generate_uid()
         instances = []
-        for modality, sop_class in (("CT", CTImageStorage), ("RTSTRUCT", RTStructureSetStorage)):
+        for modality, sop_class in (
+            ("CT", CTImageStorage), ("RTSTRUCT", RTStructureSetStorage),
+            ("RTPLAN", VIEWRAY_RT_PLAN_STORAGE), ("RTDOSE", RTDoseStorage),
+        ):
             meta = FileMetaDataset()
             meta.TransferSyntaxUID = ExplicitVRLittleEndian
             meta.MediaStorageSOPClassUID = sop_class
@@ -41,12 +53,19 @@ def main() -> None:
             ds.FrameOfReferenceUID = frame
             ds.PatientID, ds.PatientName = "SYNTHETIC-ID", "Synthetic^Only"
             ds.Modality = modality
-            if modality == "CT":
+            if modality in {"CT", "RTDOSE"}:
                 ds.Rows, ds.Columns, ds.SamplesPerPixel = 1, 2, 1
                 ds.BitsAllocated, ds.BitsStored, ds.HighBit, ds.PixelRepresentation = 16, 16, 15, 0
                 ds.PhotometricInterpretation = "MONOCHROME2"
                 ds.PixelData = b"\x00\x00\x01\x00"
-            else:
+                if modality == "RTDOSE":
+                    ds.DoseGridScaling = 0.001
+                    ds.DoseUnits, ds.DoseType, ds.DoseSummationType = "GY", "PHYSICAL", "PLAN"
+                    reference = Dataset()
+                    reference.ReferencedSOPClassUID = instances[2].SOPClassUID
+                    reference.ReferencedSOPInstanceUID = instances[2].SOPInstanceUID
+                    ds.ReferencedRTPlanSequence = [reference]
+            elif modality == "RTSTRUCT":
                 reference = Dataset()
                 reference.ReferencedSOPClassUID = instances[0].SOPClassUID
                 reference.ReferencedSOPInstanceUID = instances[0].SOPInstanceUID
@@ -55,23 +74,60 @@ def main() -> None:
                 roi = Dataset()
                 roi.ContourSequence = [contour]
                 ds.ROIContourSequence = [roi]
+            else:
+                ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+                reference = Dataset()
+                reference.ReferencedSOPClassUID = instances[1].SOPClassUID
+                reference.ReferencedSOPInstanceUID = instances[1].SOPInstanceUID
+                ds.ReferencedStructureSetSequence = [reference]
+                beam = Dataset()
+                beam.BeamNumber, beam.NumberOfControlPoints = 1, 2
+                beam.BeamType, beam.RadiationType = "STATIC", "PHOTON"
+                beam.FinalCumulativeMetersetWeight = 1
+                points = []
+                for index in range(2):
+                    point = Dataset()
+                    point.ControlPointIndex, point.CumulativeMetersetWeight = index, index
+                    point.GantryAngle, point.NominalBeamEnergy = 90, 6
+                    point.IsocenterPosition = [0, 10, 20]
+                    device = Dataset()
+                    device.RTBeamLimitingDeviceType = "MLCX"
+                    device.LeafJawPositions = [-10, -8, 10, 8]
+                    point.BeamLimitingDevicePositionSequence = [device]
+                    points.append(point)
+                beam.ControlPointSequence = points
+                ds.BeamSequence = [beam]
+                ds.add_new(0x01F10010, "LO", "Synthetic private creator")
+                ds.add_new(0x01F11001, "LO", "Synthetic private patient text")
             instances.append(ds)
             directory = source / "synthetic-patient" / modality
             directory.mkdir(parents=True, exist_ok=True)
             ds.save_as(directory / f"{modality}.dcm", enforce_file_format=True)
         report = root / "report.json"
         # Windows --windowed builds have no stdout: verify exit status and files.
+        blocked_output, blocked_report = root / "blocked-output", root / "blocked-report.json"
+        blocked = subprocess.run(
+            [str(executable), "deidentify", str(source), str(blocked_output),
+             "--report", str(blocked_report)],
+            check=False, timeout=90,
+        )
+        assert blocked.returncode == 1
+        blocked_result = json.loads(blocked_report.read_text(encoding="utf-8"))
+        assert blocked_result["status"] == "FAILED" and not blocked_output.exists()
+        assert any(f["code"] == "VIEWRAY_PLAN_REVIEW_REQUIRED" for f in blocked_result["findings"])
         subprocess.run(
-            [str(executable), "deidentify", str(source), str(output), "--report", str(report)],
+            [str(executable), "deidentify", str(source), str(output),
+             "--report", str(report), "--viewray-public-plan"],
             check=True, timeout=90,
         )
         result = json.loads(report.read_text(encoding="utf-8"))
-        assert result["status"] == "COMPLETED" and result["output_count"] == 2
+        assert result["status"] == "COMPLETED" and result["output_count"] == 4
         assert not any(finding["severity"] == "FAIL" for finding in result["findings"])
+        assert any(f["code"] == "VIEWRAY_PRIVATE_PLAN" for f in result["findings"])
         paths = list(output.rglob("*.dcm"))
-        assert len(paths) == 2
+        assert len(paths) == 4
         assert len({path.parent.parent for path in paths}) == 1
-        assert len({path.parent for path in paths}) == 2
+        assert len({path.parent for path in paths}) == 4
         assert all(len(path.relative_to(output).parts) == 3 for path in paths)
         assert all(part.startswith("group-") for path in paths
                    for part in path.relative_to(output).parts[:-1])
@@ -79,9 +135,21 @@ def main() -> None:
         assert saved["CT"].PixelData == instances[0].PixelData
         reference = saved["RTSTRUCT"].ROIContourSequence[0].ContourSequence[0].ContourImageSequence[0]
         assert reference.ReferencedSOPInstanceUID == saved["CT"].SOPInstanceUID
+        reference = saved["RTPLAN"].ReferencedStructureSetSequence[0]
+        assert reference.ReferencedSOPInstanceUID == saved["RTSTRUCT"].SOPInstanceUID
+        reference = saved["RTDOSE"].ReferencedRTPlanSequence[0]
+        assert reference.ReferencedSOPInstanceUID == saved["RTPLAN"].SOPInstanceUID
+        assert reference.ReferencedSOPClassUID == VIEWRAY_RT_PLAN_STORAGE
+        assert saved["RTPLAN"].SOPClassUID == VIEWRAY_RT_PLAN_STORAGE
+        assert saved["RTPLAN"].file_meta.MediaStorageSOPClassUID == VIEWRAY_RT_PLAN_STORAGE
+        assert saved["RTPLAN"].file_meta.TransferSyntaxUID == ImplicitVRLittleEndian
+        assert saved["RTPLAN"].BeamSequence == instances[2].BeamSequence
+        assert saved["RTDOSE"].PixelData == instances[3].PixelData
+        assert all(not elem.tag.is_private for ds in saved.values() for elem in ds.iterall())
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
-        assert saved["CT"].PatientID == saved["RTSTRUCT"].PatientID != "SYNTHETIC-ID"
-    print("Packaged executable: GUI startup, synthetic CT/RT references and pixel checks passed.")
+        assert len({str(ds.PatientID) for ds in saved.values()}) == 1
+        assert saved["CT"].PatientID != "SYNTHETIC-ID"
+    print("Packaged executable: GUI startup, ViewRay opt-in, CT/RT references and pixels passed.")
 
 
 if __name__ == "__main__":

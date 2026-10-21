@@ -18,6 +18,7 @@ class Options:
     patient_prefix: str = "SUBJECT"
     date_mode: Literal["remove", "shift"] = "remove"
     organization: Literal["flat", "source"] = "source"
+    allow_viewray_public_plan: bool = False
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,15}", self.patient_prefix):
@@ -26,6 +27,8 @@ class Options:
             raise ValueError("Date mode must be remove or shift.")
         if self.organization not in {"flat", "source"}:
             raise ValueError("Organization must be flat or source.")
+        if type(self.allow_viewray_public_plan) is not bool:
+            raise ValueError("The ViewRay public-data export option must be a boolean.")
 
 
 @dataclass(frozen=True)

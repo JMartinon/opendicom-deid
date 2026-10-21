@@ -405,7 +405,7 @@ class App(tk.Tk):
     def _remember_unsupported(self, findings: list[Finding]) -> None:
         self._unsupported_selection = None
         for finding in findings:
-            if finding.code == "UNSUPPORTED_OBJECT" and finding.file_id:
+            if finding.code in {"UNSUPPORTED_OBJECT", "VIEWRAY_PLAN_REVIEW_REQUIRED"} and finding.file_id:
                 number = finding.file_id.removeprefix("File ")
                 if number.isascii() and number.isdecimal():
                     self._unsupported_selection = (
@@ -479,11 +479,13 @@ class App(tk.Tk):
 
         recursive = self.recursive.get()
         self._last_scan = (value, recursive)
+        allow_viewray = self.settings.viewray_public_plan.get()
         self.scan_summary.set("Scanning DICOM files…")
         self.status.set("Inspecting the selected input. No files are changed.")
         self._launch(
             lambda: scan_directory(
-                Path(value), recursive=recursive, cancel=self._cancel, progress=self._progress_event
+                Path(value), recursive=recursive, cancel=self._cancel, progress=self._progress_event,
+                allow_viewray_public_plan=allow_viewray,
             ),
             "scan",
         )

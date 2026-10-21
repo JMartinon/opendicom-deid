@@ -32,6 +32,9 @@ from .reader import looks_like_dicom, read_dicom
 from .report import Report
 from .sop_classes import (
     SUPPORTED_SOP_CLASSES,
+    VIEWRAY_PLAN_REVIEW_REQUIRED,
+    VIEWRAY_PLAN_WARNING,
+    VIEWRAY_RT_PLAN_STORAGE,
     modality_error,
     modality_label,
     unsupported_object_message,
@@ -51,9 +54,9 @@ def _metadata_findings(
     options: Options | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
-    if structural_error(ds):
+    if problem := structural_error(ds):
         findings.append(_finding(
-            "FAIL", "INVALID_STRUCTURE", "Image payload or selected encoding metadata is invalid.", file_id
+            "FAIL", "INVALID_STRUCTURE", problem, file_id
         ))
     date_mode = options.date_mode if options else (
         "shift" if ds.get("LongitudinalTemporalInformationModified") == "MODIFIED" else "remove"
@@ -85,6 +88,14 @@ def _metadata_findings(
         ))
     elif problem := modality_error(ds):
         findings.append(_finding("FAIL", "MODALITY", problem, file_id))
+    if snapshot.sop_class_uid == VIEWRAY_RT_PLAN_STORAGE and options is None:
+        # Batch reports already include the source scan warning. Independent
+        # validation must carry the same limitation when no scan is available.
+        findings.append(_finding("WARNING", "VIEWRAY_PRIVATE_PLAN", VIEWRAY_PLAN_WARNING, file_id))
+    elif snapshot.sop_class_uid == VIEWRAY_RT_PLAN_STORAGE and not options.allow_viewray_public_plan:
+        findings.append(_finding(
+            "FAIL", "VIEWRAY_PLAN_REVIEW_REQUIRED", VIEWRAY_PLAN_REVIEW_REQUIRED, file_id
+        ))
     if snapshot.private_count:
         findings.append(_finding(
             "FAIL", "PRIVATE_TAGS", "Unexpected private metadata remains in the output.", file_id
@@ -379,7 +390,7 @@ def validate_batch(
     if not failures.intersection({
         "FILE_META_MISMATCH", "PRIVATE_TAGS", "RESIDUAL_METADATA", "INVALID_UID",
         "RESIDUAL_FILE_METADATA", "UNSUPPORTED_OBJECT", "MODALITY",
-        "INVALID_STRUCTURE",
+        "INVALID_STRUCTURE", "VIEWRAY_PLAN_REVIEW_REQUIRED",
         "PATIENT_PSEUDONYM", "DEIDENTIFICATION_MARKERS", "TECHNICAL_UID_CHANGED",
         "TRANSFER_SYNTAX_CHANGED", "DATE_POLICY",
         "OUTPUT_UNREADABLE", "FILE_COUNT",

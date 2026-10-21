@@ -13,12 +13,19 @@ from pydicom.uid import UID_dictionary
 from .diagnostics import private_diagnostics
 from .models import Cancelled, Finding, check_cancel
 from .scanner import _paths
-from .sop_classes import SUPPORTED_SOP_CLASSES, modality_label
+from .sop_classes import (
+    KNOWN_PRIVATE_STORAGE_CLASSES,
+    SUPPORTED_SOP_CLASSES,
+    VIEWRAY_RT_PLAN_STORAGE,
+    modality_label,
+)
 
 
 def _uid_description(value, kind: str, show_private_class_uids: bool) -> dict:
     text = value if isinstance(value, str) else ""
     definition = UID_dictionary.get(text)
+    if kind == "SOP Class" and text in KNOWN_PRIVATE_STORAGE_CLASSES:
+        return {"name": KNOWN_PRIVATE_STORAGE_CLASSES[text], "uid": text}
     if definition and definition[1] == kind:
         return {"name": definition[0], "uid": text}
     if not text:
@@ -69,6 +76,11 @@ def inspect_header(path: Path, file_id: int, *, show_private_class_uids: bool = 
                     ),
                 },
             }
+            if str(sop_class) == VIEWRAY_RT_PLAN_STORAGE:
+                result["support_note"] = (
+                    "Public-data research export requires explicit opt-in. "
+                    "Full proprietary plan preservation is unsupported."
+                )
         return failure if diagnostics.has_warnings else result
     except Exception:
         return failure

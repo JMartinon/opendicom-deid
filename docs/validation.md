@@ -38,6 +38,44 @@ The report's `input_count` and modality counts describe accepted scan records;
 rejected objects are additional. A report with 650 accepted objects and one
 unsupported-object failure therefore does not mean only 650 DICOM files exist.
 
+### ViewRay private RT plan research export
+
+Local inspection supplied by the user identified the exact class
+`2.16.840.1.114493.1.2.1.4.1.1.481.5`, `Modality=RTPLAN`, and Implicit VR Little
+Endian. The previous standard-only class list caused the reported rejection.
+No patient dataset was transferred or used here. No public vendor specification
+for this class was located, so its similarity to a standard UID is not treated
+as proof of equivalence. [DICOM PS3.5 Section 9](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_9.html)
+prohibits inferring semantics from a UID's suffix.
+
+Version 0.1.4 recognizes only this exact private class and offers an explicit,
+default-off **ViewRay public-data research export** option. It keeps the class
+UID and class references unchanged. Existing private-tag removal still applies,
+so proprietary treatment information may be lost; complete MRIdian plan
+preservation and treatment-system re-import are unsupported. Both batch reports
+and standalone validation carry this limitation. Recognition is not full vendor
+conformance, and no class rewrite or broad vendor-prefix exception is used.
+
+The public-data guard requires nonempty beams with unique positive beam numbers,
+at least two control points per beam, matching counts and sequential indexes,
+finite nondecreasing meterset weights from zero to a positive final weight, and
+readable public geometry in the first control point. Later control points may
+inherit omitted geometry. An explicitly supplied final meterset weight must
+match. These checks use selected public [RT Beams semantics](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.8.14.html),
+not an exhaustive private or standard IOD validator. They intentionally reject
+private-only and incomplete public representations.
+
+`tests/test_viewray_plan.py` builds synthetic linked CT/MR/RTSTRUCT/ViewRay-plan/
+RTDOSE/RTIMAGE objects using Implicit VR Little Endian. It checks unchanged
+storage-class UIDs, remapped instance references, public beam/MLC geometry,
+meterset weights and pixels, root/nested private removal, and the malformed
+private FD case. Negative tests cover default rejection, neighboring unsupported
+UIDs, modality/file-meta mismatches, missing public treatment content, malformed
+control points, and deliberately changed output. Numeric RT reference values
+and retained plan/reference sequence cardinalities are fingerprinted as well.
+This establishes behavior on synthetic fixtures, not acceptance of the user's
+actual plan or the completeness of its exported public data.
+
 ## Other automated checks
 
 ### Secondary Capture source modalities
@@ -127,7 +165,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 - Legacy point/isodose RTDOSE content is preserved without requiring image-grid
   fields. Those modules are retired in the current standard; DVH-only objects
   also need no grid. See the [current RT Dose module table](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_A.18.3.html).
-- Unknown public attributes, unknown UID semantics, private SOP classes, and
+- Unknown public attributes, unknown UID semantics, unrecognized private SOP classes, and
   unsupported storage classes require specialized handling. An explicit failure
   protects against an unsupported object being presented as successfully cleaned.
 - MPEG/HEVC video transfer syntaxes are unsupported. Their frame encapsulation
@@ -138,7 +176,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **206 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **247 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked.

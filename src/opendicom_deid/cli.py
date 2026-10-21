@@ -37,6 +37,12 @@ def parser() -> argparse.ArgumentParser:
     process.add_argument(
         "--report", type=Path, help="Save a safe JSON report outside the input directory"
     )
+    for command in (scan, process):
+        command.add_argument(
+            "--viewray-public-plan", action="store_true",
+            help="Allow public-data research export of the recognized ViewRay private RT plan; "
+            "vendor-private treatment fields are removed, full plan preservation is unsupported",
+        )
     validate = commands.add_parser(
         "validate", help="Independently inspect a de-identified directory"
     )
@@ -71,7 +77,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "scan":
             from .core.scanner import scan_directory
 
-            scan = scan_directory(args.input, recursive=not args.no_recursive, cancel=cancel)
+            scan = scan_directory(
+                args.input, recursive=not args.no_recursive, cancel=cancel,
+                allow_viewray_public_plan=args.viewray_public_plan,
+            )
             print(
                 json.dumps(
                     {
@@ -104,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
                 patient_prefix=args.prefix,
                 date_mode=args.dates,
                 organization=args.organization,
+                allow_viewray_public_plan=args.viewray_public_plan,
             )
             report = process_batch(args.input, args.output, options, cancel=cancel)
         print(report.summary())

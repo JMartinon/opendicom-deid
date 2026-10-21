@@ -47,6 +47,19 @@ Public unknown-value (`UN`) attributes and protected opaque binary fields fail
 closed. The engine also limits supported SOP classes. New standard attributes,
 locally extended objects and unexpected vendor encodings require investigation.
 
+One observed ViewRay private RTPLAN class has an opt-in public-data research
+export mode, documented in [the validation evidence](validation.md#viewray-private-rt-plan-research-export).
+It does not retain vendor-private treatment fields or claim preservation of a
+complete proprietary plan. Public beam/control-point content is required and
+checked, while the original class UID is preserved. A fixed warning is emitted
+for each such plan. The default remains to reject it until the research export
+option is explicitly enabled. This option does not relax metadata scrubbing or
+allow other private storage classes.
+
+This distinction matters because [DICOM PS3.2 Section 7.3](https://dicom.nema.org/Medical/dicom/current/output/chtml/part02/sect_7.3.html)
+allows specialized SOP classes to require private attributes. A class UID alone
+does not establish that deleting them leaves a complete treatment object.
+
 ## Dates and quantitative uses
 
 Default removal sets DA, DT and TM values to zero length, including attributes not
@@ -105,4 +118,6 @@ test data before trusting an export.
 
 No real patient datasets belong in source control, test fixtures, screenshots or
 issue attachments. Reports and logs must omit original identities, source paths,
-original UIDs and UID mappings. The application has no upload or telemetry path.
+original entity UIDs and UID mappings. Known storage-class UIDs are technical
+format identifiers and may appear in diagnostics. The application has no upload
+or telemetry path.

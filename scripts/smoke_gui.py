@@ -11,15 +11,19 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from pydicom.dataset import FileDataset, FileMetaDataset
+import pydicom
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.uid import (
     CTImageStorage,
     EncapsulatedPDFStorage,
     ExplicitVRLittleEndian,
+    ImplicitVRLittleEndian,
     generate_uid,
 )
 
+from opendicom_deid.core.models import Cancelled
 from opendicom_deid.core.scanner import scan_directory
+from opendicom_deid.core.sop_classes import VIEWRAY_RT_PLAN_STORAGE
 from opendicom_deid.gui.app import App, check_startup
 
 
@@ -49,6 +53,102 @@ def finish(app: App) -> None:
         assert time.monotonic() < deadline, "The GUI worker did not finish in time."
         app.update()
         time.sleep(0.01)
+
+
+def check_viewray_public_plan(app: App, root: Path) -> None:
+    """Verify explicit consent reaches both scan paths and survives cancellation."""
+    source, output = root / "viewray-input", root / "viewray-output"
+    original = write_synthetic_ct(source)
+    plan = deepcopy(original)
+    del plan.PixelData
+    plan.SOPClassUID = plan.file_meta.MediaStorageSOPClassUID = VIEWRAY_RT_PLAN_STORAGE
+    plan.SOPInstanceUID = plan.file_meta.MediaStorageSOPInstanceUID = generate_uid()
+    plan.SeriesInstanceUID = generate_uid()
+    plan.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+    plan.Modality = "RTPLAN"
+    beam = Dataset()
+    beam.BeamNumber = 1
+    beam.BeamType, beam.RadiationType = "STATIC", "PHOTON"
+    beam.NumberOfControlPoints = 2
+    beam.FinalCumulativeMetersetWeight = 1
+    points = []
+    for index in range(2):
+        point = Dataset()
+        point.ControlPointIndex = index
+        point.CumulativeMetersetWeight = index
+        point.GantryAngle = 90
+        point.IsocenterPosition = [0, 10, 20]
+        point.NominalBeamEnergy = 6
+        device = Dataset()
+        device.RTBeamLimitingDeviceType = "MLCX"
+        device.LeafJawPositions = [-10, -8, 10, 8]
+        point.BeamLimitingDevicePositionSequence = [device]
+        points.append(point)
+    beam.ControlPointSequence = points
+    plan.BeamSequence = [beam]
+    plan.add_new(0x01F10010, "LO", "Synthetic private creator")
+    plan.add_new(0x01F11001, "LO", "Synthetic private patient text")
+    plan.save_as(source / "viewray-plan.dcm", enforce_file_format=True)
+    before = {path: hashlib.sha256(path.read_bytes()).digest() for path in source.iterdir()}
+    app.input_path.set(str(source))
+    app.output_path.set(str(output))
+    assert not app.settings.viewray_public_plan.get()
+    assert not app.settings.options(True).allow_viewray_public_plan
+    with patch("opendicom_deid.core.scanner.scan_directory", wraps=scan_directory) as scan:
+        app.scan_button.invoke()
+        finish(app)
+        assert scan.call_args.kwargs["allow_viewray_public_plan"] is False
+    assert "Full proprietary plan preservation is unsupported" in app.details.get("1.0", "end")
+    app.start_button.invoke()
+    finish(app)
+    assert app._report is not None and not app._report.ok
+    assert any(f.code == "VIEWRAY_PLAN_REVIEW_REQUIRED" for f in app._report.findings)
+    assert not output.exists()
+
+    app.advanced_button.invoke()
+    app.settings.viewray_check.invoke()
+    app.update()
+    assert app.settings.viewray_public_plan.get()
+    with patch("opendicom_deid.core.scanner.scan_directory", wraps=scan_directory) as scan:
+        app.scan_button.invoke()
+        assert app.settings.viewray_check.instate(["disabled"])
+        finish(app)
+        assert scan.call_args.kwargs["allow_viewray_public_plan"] is True
+    assert app.scan_summary.get().startswith("2 DICOM files")
+    assert "vendor-private fields are removed" in app.details.get("1.0", "end")
+    with patch("opendicom_deid.core.anonymizer.scan_directory", wraps=scan_directory) as scan:
+        app.start_button.invoke()
+        finish(app)
+        assert scan.call_args.kwargs["allow_viewray_public_plan"] is True
+    assert app._report is not None and app._report.ok and app._report.output_count == 2
+    assert any(f.code == "VIEWRAY_PRIVATE_PLAN" for f in app._report.findings)
+    saved = {str(ds.Modality): ds for ds in (pydicom.dcmread(p) for p in output.rglob("*.dcm"))}
+    assert saved["RTPLAN"].SOPClassUID == VIEWRAY_RT_PLAN_STORAGE
+    assert saved["RTPLAN"].BeamSequence == plan.BeamSequence
+    assert all(not elem.tag.is_private for elem in saved["RTPLAN"].iterall())
+
+    def wait_for_cancellation(_source, _recursive, cancel, _progress, **kwargs):
+        assert kwargs["allow_viewray_public_plan"] is True
+        assert cancel.wait(5), "The processing worker did not receive cancellation."
+        raise Cancelled()
+
+    cancelled_output = root / "viewray-cancelled"
+    app.output_path.set(str(cancelled_output))
+    with patch("opendicom_deid.core.anonymizer.scan_directory", side_effect=wait_for_cancellation):
+        app.start_button.invoke()
+        assert app._busy and app.settings.viewray_check.instate(["disabled"])
+        app.settings.viewray_check.invoke()
+        assert app.settings.viewray_public_plan.get()
+        app.cancel_button.invoke()
+        finish(app)
+    assert app._report is not None and app._report.status == "CANCELLED"
+    assert not cancelled_output.exists()
+    assert app.settings.viewray_check.instate(["!disabled"])
+    assert app.settings.viewray_public_plan.get()
+    assert before == {path: hashlib.sha256(path.read_bytes()).digest() for path in source.iterdir()}
+    app.settings.viewray_check.invoke()
+    app.advanced_button.invoke()
+    print("GUI: ViewRay opt-in, public-plan processing, and cancellation controls passed.")
 
 
 def check_storage_inspection(app: App, source: Path) -> None:
@@ -182,6 +282,7 @@ def main() -> None:
             assert app._report is not None and app._report.ok
             assert app._report.output_count == 1
             print("GUI: input changes stay idle; explicit scan and synthetic processing passed.")
+            check_viewray_public_plan(app, Path(temporary))
             check_storage_inspection(app, Path(temporary) / "inspection-input")
     finally:
         app.destroy()
