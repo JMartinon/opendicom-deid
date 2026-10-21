@@ -13,14 +13,15 @@ from pydicom.uid import UID, UID_dictionary
 VIEWRAY_RT_PLAN_STORAGE = "2.16.840.1.114493.1.2.1.4.1.1.481.5"
 KNOWN_PRIVATE_STORAGE_CLASSES = {VIEWRAY_RT_PLAN_STORAGE: "ViewRay RT Plan (private storage)"}
 VIEWRAY_PLAN_WARNING = (
-    "ViewRay private RT plan: public beam/control-point data and references are checked; "
+    "ViewRay private RT plan: selected public beam/control-point values and references are checked; "
     "vendor-private fields are removed. Proprietary treatment content may be lost. "
-    "Re-import into the treatment system and clinical completeness are not verified."
+    "Completeness for independent dose reconstruction or treatment-system re-import is not verified."
 )
 VIEWRAY_PLAN_REVIEW_REQUIRED = (
     "This is a ViewRay private RT plan. Full proprietary plan preservation is unsupported. "
     "For public DICOM data only, enable 'ViewRay public-data research export' in Advanced options "
-    "(--viewray-public-plan in the CLI). This removes vendor-private treatment fields."
+    "(--viewray-public-plan in the CLI). This removes vendor-private treatment fields and is "
+    "not validated for independent dose reconstruction."
 )
 
 # SC Modality describes the source of a capture and is optional (Type 3),

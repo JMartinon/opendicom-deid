@@ -68,14 +68,19 @@ mode. In version 0.1.4 or newer, open **Advanced options**, enable **ViewRay
 public-data research export**, then run **De-identify** on the complete input
 tree. This setting is off by default because proprietary treatment fields are
 removed, and a full MRIdian plan or treatment-system re-import is unsupported.
+**This mode is not validated for independent dose reconstruction.** The metadata
+policy also replaces public text such as machine and material identifiers that
+an external calculation workflow may need. Keep the original export in its
+authorized clinical storage if future reconstruction is required.
 
 The mode requires public beam/control-point data with coherent numbers, counts,
 indexes, geometry, and meterset weights. It preserves the original private class
 UID in the plan, file meta, and references; remaps entity UIDs; and checks retained
 public RT values and relationships. It does **not** convert the file to standard
 RT Plan Storage. A viewer that does not support the original private class may
-still refuse the result. Empty or inconsistent public plans fail instead of
-publishing an incomplete public representation.
+still refuse the result. Plans without the required public beams/control points,
+or with inconsistencies covered by these selected checks, fail. Passing these
+checks does not establish that all inputs for dose calculation are present.
 
 Every accepted plan produces a warning about removal of proprietary fields.
 This is not verified full ViewRay support: the vendor class specification and

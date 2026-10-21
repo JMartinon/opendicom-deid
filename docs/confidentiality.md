@@ -56,6 +56,16 @@ for each such plan. The default remains to reject it until the research export
 option is explicitly enabled. This option does not relax metadata scrubbing or
 allow other private storage classes.
 
+This mode is not validated for independent dose reconstruction. Public text such
+as machine and material identifiers is also subject to scrubbing, so retaining
+selected numeric parameters and pixels does not establish preservation of all
+inputs needed by an external dose calculator. A vendor-specific retention policy
+would need documented field meanings, identification risks, and reference
+handling. No such policy is implemented for this class. See the DICOM
+[Retain Safe Private Option](https://dicom.nema.org/medical/dicom/current/output/chtml/part15/sect_E.3.10.html)
+for the distinction between known safe private attributes and arbitrary private
+data.
+
 This distinction matters because [DICOM PS3.2 Section 7.3](https://dicom.nema.org/Medical/dicom/current/output/chtml/part02/sect_7.3.html)
 allows specialized SOP classes to require private attributes. A class UID alone
 does not establish that deleting them leaves a complete treatment object.

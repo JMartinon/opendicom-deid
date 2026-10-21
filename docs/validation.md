@@ -62,8 +62,19 @@ finite nondecreasing meterset weights from zero to a positive final weight, and
 readable public geometry in the first control point. Later control points may
 inherit omitted geometry. An explicitly supplied final meterset weight must
 match. These checks use selected public [RT Beams semantics](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.8.14.html),
-not an exhaustive private or standard IOD validator. They intentionally reject
-private-only and incomplete public representations.
+not an exhaustive private or standard IOD validator. They reject plans without
+the required public content and the inconsistencies listed above. They do not
+establish completeness: for example, acceptance does not require fraction-group
+beam metersets or a complete MLC description.
+
+Independent dose reconstruction is not validated. In addition to removing all
+private attributes, the metadata policy replaces public text such as
+`TreatmentMachineName`, `MaterialID`, and `FluenceModeID`; an external calculation
+workflow may use these to select machine, material, or fluence models. The
+selected clinical fingerprints do not establish preservation of those meanings.
+Supporting reconstruction requires a version-specific vendor attribute
+specification, defined inputs for the intended calculation workflow, and
+validation that the relevant clinical information survives de-identification.
 
 `tests/test_viewray_plan.py` builds synthetic linked CT/MR/RTSTRUCT/ViewRay-plan/
 RTDOSE/RTIMAGE objects using Implicit VR Little Endian. It checks unchanged

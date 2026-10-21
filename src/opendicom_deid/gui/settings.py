@@ -61,9 +61,9 @@ class AdvancedSettings(ttk.Frame):
         self.viewray_check.grid(row=6, column=0, columnspan=2, sticky="w")
         ttk.Label(
             self, style="CardMuted.TLabel", wraplength=500,
-            text="For the recognized private RT plan only. Exports public beam/control-point "
-            "data and references; removes vendor-private treatment fields. Full plan preservation "
-            "and re-import into MRIdian are not supported.",
+            text="For the recognized private RT plan only. Checks selected public numeric data "
+            "and references; removes vendor-private fields. Not validated for independent dose "
+            "reconstruction. Full plan preservation and MRIdian re-import are unsupported.",
         ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 20))
         ttk.Label(
             self,
