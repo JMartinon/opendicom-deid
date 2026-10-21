@@ -22,6 +22,22 @@ the independent validator rejects the output and emits no reference-integrity
 PASS. This reproduces the reported failure mode without claiming to reproduce
 every vendor-specific characteristic of the original files.
 
+`tests/test_rt_storage.py` adds a linked CT/MR/RTSTRUCT/RTPLAN/RTDOSE/RTIMAGE/
+RT Ion Plan batch. It checks eight nested instance references, unchanged storage
+class UIDs and pixel bytes, contours, beam/control-point values, and ion scan-spot
+values. This demonstrates conventional RT support; it does not establish support
+for every proprietary or newer RT storage class used by a vendor.
+
+An `UNSUPPORTED_OBJECT` finding means that the actual SOP Class UID is outside
+the supported set, even if a viewer labels the file RTPLAN or RTIMAGE. Reports
+now identify recognized standard storage classes by name and public technical
+UID. Unknown/private identifiers remain hidden in ordinary reports. These
+objects still block publication until their handling has been verified.
+
+The report's `input_count` and modality counts describe accepted scan records;
+rejected objects are additional. A report with 650 accepted objects and one
+unsupported-object failure therefore does not mean only 650 DICOM files exist.
+
 ## Other automated checks
 
 ### Secondary Capture source modalities
@@ -114,7 +130,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **166 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **194 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked.

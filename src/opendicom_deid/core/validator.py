@@ -30,7 +30,12 @@ from .models import (
 from .policy import metadata_issues
 from .reader import looks_like_dicom, read_dicom
 from .report import Report
-from .sop_classes import SUPPORTED_SOP_CLASSES, modality_error, modality_label
+from .sop_classes import (
+    SUPPORTED_SOP_CLASSES,
+    modality_error,
+    modality_label,
+    unsupported_object_message,
+)
 from .structure import structural_error
 
 
@@ -76,7 +81,7 @@ def _metadata_findings(
         ))
     if snapshot.sop_class_uid not in SUPPORTED_SOP_CLASSES:
         findings.append(_finding(
-            "FAIL", "UNSUPPORTED_OBJECT", "An unsupported or inconsistent DICOM object was found.", file_id
+            "FAIL", "UNSUPPORTED_OBJECT", unsupported_object_message(ds), file_id
         ))
     elif problem := modality_error(ds):
         findings.append(_finding("FAIL", "MODALITY", problem, file_id))

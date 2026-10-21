@@ -65,7 +65,10 @@ class Report:
         return asdict(self)
 
     def save(self, path: str | Path) -> None:
-        """Explicit user-requested export. Does not include paths, UIDs or patient values."""
+        """Export without paths, patient values, or instance/study/series UIDs.
+
+        Diagnostics may identify standard SOP classes by their public technical UID.
+        """
         with Path(path).open("x", encoding="utf-8") as stream:
             stream.write(json.dumps(self.to_dict(), indent=2) + "\n")
 

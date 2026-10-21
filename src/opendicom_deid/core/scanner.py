@@ -18,6 +18,7 @@ from .sop_classes import (
     SUPPORTED_SOP_CLASSES,
     modality_error,
     modality_label,
+    unsupported_object_message,
 )
 from .structure import structural_error
 
@@ -102,7 +103,7 @@ def scan_directory(
         modality = modality_label(ds)
         if sop_class not in SUPPORTED_SOP_CLASSES:
             result.findings.append(Finding(
-                "FAIL", "UNSUPPORTED_OBJECT", "An unsupported DICOM object requires specialized handling.", label
+                "FAIL", "UNSUPPORTED_OBJECT", unsupported_object_message(ds), label
             ))
             continue
         if problem := modality_error(ds):

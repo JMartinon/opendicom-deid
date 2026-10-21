@@ -140,6 +140,24 @@ The independent `validate` command can inspect an output directory without the
 original dataset, but it cannot establish original/output equivalence without
 the in-memory batch comparison. Privacy review remains required in every case.
 
+### Identify an unsupported storage format
+
+If a report names a neutral file number such as **File 000199**, a local helper
+can inspect that file's technical storage information automatically. From your
+Python environment, after `git pull --ff-only`, run:
+
+```sh
+python scripts/inspect_storage.py "/path/to/the/same/input-folder" --file-id 199
+```
+
+No application rebuild is needed. Keep the input tree unchanged so the file
+number matches the report. The helper reads selected header fields without
+reading pixels, writing output, or printing filenames, patient fields, or
+instance/study/series UIDs. If it reports an unknown/private storage class,
+`--show-private-class-uids` reveals only that class's numeric UID for local
+investigation. This inspection does not anonymize the dataset or change the
+supported formats.
+
 ## Build native packages
 
 Run on the target operating system. On Ubuntu 24.04 or newer, install the system

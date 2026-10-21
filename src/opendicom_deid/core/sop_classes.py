@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from pydicom.dataset import Dataset
-from pydicom.uid import UID
+from pydicom.uid import UID, UID_dictionary
 
 # SC Modality describes the source of a capture and is optional (Type 3),
 # overriding General Series. PS3.3 C.8.6.1, Table C.8-24, Note 2:
@@ -68,6 +68,28 @@ def modality_label(ds: Dataset) -> str:
     if not value:
         return "Unspecified"
     return value if value in KNOWN_MODALITIES else "Other modality"
+
+
+def unsupported_object_message(ds: Dataset) -> str:
+    """Identify standard storage classes without echoing arbitrary source UIDs.
+
+    UID.name falls back to the input value for unknown UIDs. Look up the trusted
+    dictionary first so private class identifiers cannot leak into public reports.
+    """
+    sop_class = str(ds.get("SOPClassUID", ""))
+    definition = UID_dictionary.get(sop_class)
+    modality = modality_label(ds)
+    if definition is not None and definition[1] == "SOP Class":
+        return (
+            f"Unsupported DICOM SOP class: {definition[0]} ({sop_class}); "
+            f"modality: {modality}. This storage class requires dedicated "
+            "de-identification support."
+        )
+    return (
+        f"An unrecognized or private DICOM SOP class was found; modality: {modality}. "
+        "Check SOP Class UID (0008,0016) locally to identify the export format; "
+        "dedicated de-identification support is required."
+    )
 
 
 def modality_error(ds: Dataset) -> str | None:
