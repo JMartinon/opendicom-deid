@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.1 is an initial validation release.** Automated checks do not prove
+**Version 0.1.2 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -20,7 +20,7 @@ sharing it. No claim of a fully verified DICOM confidentiality profile is made.
 - Assigns different patient pseudonyms within a batch and uses each patient's
   pseudonym consistently across studies.
 - Removes private metadata by default; offers date removal or consistent date
-  shifting and neutral output grouping for separate dose runs.
+  shifting and preserves nested source folders with neutral names by default.
 - Compares input/output references, pixel bytes, geometry, and selected RT
   parameters. Pre-existing external references produce explicit findings.
 - Rejects conflicting instance duplicates and unsafe input/output locations.
@@ -40,16 +40,25 @@ describes the synthetic regression and the remaining acceptance work.
 
 The illustration uses synthetic counts; it is not a clinical validation result.
 
-1. Choose the input directory. A preliminary scan counts DICOM files and modalities.
+1. Choose the input directory. Selecting or editing a path does not start a scan.
+   **Scan input** is an optional preview of file counts, modalities, and findings.
 2. Choose a **new or empty** output directory, outside the input directory tree.
    Use **New folder…** beside the output field to create and select a folder.
 3. Leave the defaults in place, or expand **Advanced options**.
-4. Click **De-identify**. You can cancel while the interface remains responsive.
+4. Click **De-identify**. It scans, processes, and validates the dataset in one run.
+   You can cancel while the interface remains responsive.
 5. Read the findings, save a report if needed, and perform a privacy review.
 
 Private-tag removal and validation are always enabled. A custom prefix must be a
-neutral label; do not use a patient name or original identifier. Source grouping
-uses labels such as `group-0001` and never copies original directory names.
+neutral label; do not use a patient name or original identifier. Output preserves
+the source folder hierarchy by default, replacing each folder name with a label
+such as `group-0001`. Original folder names are never copied because they can
+contain patient information. Patient folders and nested study/series or dose-run
+folders therefore remain separate. If a source folder directly contains files
+from several patients, those files are further separated into folders named with
+their generated patient pseudonyms. Empty folders and non-DICOM files are not copied.
+Turn off **Preserve patient folders and subfolders** in Advanced options only if
+you want a flat output directory (CLI: `--organization flat`).
 
 Reports use a new `.json` filename and never overwrite an existing file. Saving
 inside the selected input tree is prohibited. Pseudonym and UID mappings exist
@@ -63,10 +72,12 @@ Open a successful run, then choose your platform under **Artifacts**. These
 packages include Python, Tcl/Tk, the application, and dependency notices.
 **End users do not need Python, a terminal, or a local build.**
 
-For Windows, select **OpenDICOM-De-ID-Windows-x86_64**. Extract the downloaded
-GitHub artifact ZIP, then extract the application ZIP inside it. Double-click
-`OpenDICOM-De-ID.exe` in the extracted folder. The standalone executable includes
-its runtime; keep the accompanying license notices when distributing it.
+For Windows, select **Windows-application**. Extract the downloaded ZIP once and
+double-click **OpenDICOM-De-ID.exe** directly inside the extracted folder. The
+standalone executable includes its runtime; keep the accompanying license
+notices when distributing it. The separate **OpenDICOM-De-ID-Windows-x86_64**
+artifact is the versioned archive plus checksum for distribution; that artifact
+requires extracting both the outer GitHub ZIP and the inner application ZIP.
 
 The repository is private, so GitHub downloads require signing in with an
 account that has repository access. Actions artifacts are retained for **14
@@ -178,7 +189,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.1`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.2`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

@@ -14,6 +14,7 @@ from .. import __version__
 from ..cli import report_path_allowed
 from ..core.models import Cancelled, Progress, ScanResult
 from ..core.report import Report, format_findings
+from .dialogs import ask_directory
 from .licenses import license_text
 from .settings import AdvancedSettings
 from .theme import BACKGROUND, MUTED, SURFACE, TEXT, apply_theme
@@ -83,9 +84,9 @@ class App(tk.Tk):
         self.input_path = tk.StringVar()
         self.output_path = tk.StringVar()
         self.recursive = tk.BooleanVar(value=True)
-        self.status = tk.StringVar(value="Select an input directory to scan your dataset.")
+        self.status = tk.StringVar(value="Choose input and output folders to get started.")
         self.counts = tk.StringVar(value="No input scanned")
-        self.scan_summary = tk.StringVar(value="DICOM files and modalities will appear here.")
+        self.scan_summary = tk.StringVar(value="Optional preview. De-identify always scans first.")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         frame = ttk.Frame(self, padding=(24, 16))
@@ -111,7 +112,6 @@ class App(tk.Tk):
         self.output_entry, self.output_browse = self._directory_row(
             directories, 2, "Output folder", self.output_path, False
         )
-        self.input_entry.bind("<FocusOut>", lambda _: self._scan_changed_input())
         self.input_entry.bind("<Return>", lambda _: self.scan())
         ttk.Label(
             directories,
@@ -125,7 +125,7 @@ class App(tk.Tk):
             options,
             text="Include subfolders",
             variable=self.recursive,
-            command=self._scan_changed_input,
+            command=self._input_changed,
         )
         self.recursive_check.grid(row=0, column=0, sticky="w")
         self.scan_button = ttk.Button(options, text="Scan input", command=self.scan)
@@ -215,9 +215,10 @@ class App(tk.Tk):
         ).grid(row=5, sticky="w", pady=(10, 0))
         self._set_details(
             "All processing stays on this computer.\n\n"
-            "Choose an input folder to see the file count and any findings. "
+            "Use Scan input for an optional preview, or De-identify to start. "
             "Identifying text in images is not removed."
         )
+        self.input_path.trace_add("write", self._input_changed)
         # Keep wrapped text inside the window at the minimum supported size.
         directories.bind(
             "<Configure>", lambda event: self._wrap_labels(directories, event.width - 40)
@@ -255,7 +256,7 @@ class App(tk.Tk):
                 child.configure(wraplength=max(200, width))
 
     def _browse(self, variable: tk.StringVar, is_input: bool) -> None:
-        selected = filedialog.askdirectory(
+        selected = ask_directory(
             parent=self,
             title="Select input directory"
             if is_input
@@ -264,8 +265,6 @@ class App(tk.Tk):
         )
         if selected:
             variable.set(selected)
-            if is_input:
-                self.scan()
 
     def _new_output_folder(self) -> None:
         if self._busy:
@@ -299,7 +298,7 @@ class App(tk.Tk):
         ttk.Entry(body, textvariable=parent, width=44).grid(row=3, sticky="ew", pady=(6, 16))
 
         def browse_parent() -> None:
-            location = filedialog.askdirectory(
+            location = ask_directory(
                 parent=window, title="Choose parent folder", initialdir=parent.get(), mustexist=True
             )
             if location:
@@ -338,9 +337,7 @@ class App(tk.Tk):
                 )
                 return
             self.output_path.set(str(destination))
-            self.status.set(
-                "New empty output folder created. Ready when your input scan is complete."
-            )
+            self.status.set("New empty output folder created. Ready to de-identify.")
             dismiss()
             self.output_entry.focus_set()
 
@@ -365,10 +362,11 @@ class App(tk.Tk):
             self._advanced_window.withdraw()
             self.advanced_button.configure(text="Advanced options")
 
-    def _scan_changed_input(self) -> None:
+    def _input_changed(self, *_: str) -> None:
         selection = (self.input_path.get(), self.recursive.get())
-        if not self._busy and selection != self._last_scan and self.input_path.get().strip():
-            self.scan()
+        if not self._busy and selection != self._last_scan:
+            self.scan_summary.set("Optional preview. De-identify always scans first.")
+            self.counts.set("Input selection changed; no preview scan run")
 
     def _set_details(self, content: str) -> None:
         self.details.configure(state="normal")

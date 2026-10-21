@@ -36,7 +36,7 @@ jobs:
           architecture: ${{ matrix.architecture }}
       - name: Install Linux build and display support
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk python3-venv libpython3-dev imagemagick
+        run: sudo apt-get update && sudo apt-get install -y xvfb xdotool python3-tk python3-venv libpython3-dev imagemagick
       - name: Check build interpreter
         run: python scripts/build_environment.py
       - run: python -m pip install '.[build,dev]'
@@ -45,6 +45,9 @@ jobs:
       - name: GUI smoke check (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a python scripts/smoke_gui.py
+      - name: Folder chooser mouse interaction (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/check_folder_dialog.py
       - name: GUI smoke check (Windows / macOS)
         if: runner.os != 'Linux'
         run: python scripts/smoke_gui.py
@@ -78,6 +81,14 @@ jobs:
       - name: Frozen application smoke check (Linux)
         if: runner.os == 'Linux'
         run: dist/OpenDICOM-De-ID/OpenDICOM-De-ID --version
+      - name: Upload Windows application (extract once)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Windows-application
+          path: dist/windows-app/
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenDICOM-De-ID-${{ matrix.target }}

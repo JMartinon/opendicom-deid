@@ -30,7 +30,10 @@ def parser() -> argparse.ArgumentParser:
         "--prefix", default="SUBJECT", help="Neutral pseudonym prefix; never a name or original ID"
     )
     process.add_argument("--dates", choices=["remove", "shift"], default="remove")
-    process.add_argument("--organization", choices=["flat", "source"], default="flat")
+    process.add_argument(
+        "--organization", choices=["flat", "source"], default="source",
+        help="Preserve nested source folders with neutral names (default), or use one flat folder",
+    )
     process.add_argument(
         "--report", type=Path, help="Save a safe JSON report outside the input directory"
     )

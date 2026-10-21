@@ -17,7 +17,7 @@ class Options:
     recursive: bool = True
     patient_prefix: str = "SUBJECT"
     date_mode: Literal["remove", "shift"] = "remove"
-    organization: Literal["flat", "source"] = "flat"
+    organization: Literal["flat", "source"] = "source"
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,15}", self.patient_prefix):

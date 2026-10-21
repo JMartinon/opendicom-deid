@@ -15,8 +15,11 @@ same public API and use the same report model.
    are not treated as patient identifiers.
 3. **Transform.** Apply the documented metadata policy and Kitware rules where
    appropriate, recurse through sequences, remove private elements, and write
-   safe names. Grouped mode replaces each source-directory component with a
-   neutral label so dose runs remain distinct.
+   safe names. The default source organization replaces each source-directory
+   component with a neutral label, preserving the full hierarchy so patients,
+   studies, and dose runs remain distinct. Where one source directory directly
+   contains several patients, its files get an additional pseudonym folder per
+   patient. Explicit flat organization remains available.
 4. **Validate.** Re-read output and compare against input snapshots and reference
    graphs. The output cannot be declared technically complete merely because
    individual writes succeeded.
@@ -66,6 +69,10 @@ worker threads never update widgets. The controls are disabled while a job is
 active. Closing during a job requests cancellation and waits for cleanup before
 destroying the window. Exceptions shown to users use fixed text because raw
 parser exceptions and filesystem errors can contain identifying information.
+
+Selecting input, editing a path, and toggling recursion do not start a worker.
+The Scan input button provides an optional preview. De-identify always performs
+its own scan so its mappings and integrity checks use the current input.
 
 ## Privacy boundaries
 

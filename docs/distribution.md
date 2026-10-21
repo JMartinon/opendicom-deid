@@ -13,11 +13,15 @@ build commands. Download a platform archive from a published version's
 available, or from a successful
 [Native desktop builds run](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml).
 
-For Actions downloads, open the run's **Artifacts** section and choose the
-platform below. GitHub wraps the application archive and its SHA-256 file in an
-outer ZIP: extract that ZIP, then extract the application archive inside it.
-For Windows, choose **OpenDICOM-De-ID-Windows-x86_64** and double-click the
-extracted `OpenDICOM-De-ID.exe`. No PowerShell commands are needed.
+For Windows Actions downloads, open the run's **Artifacts** section and choose
+**Windows-application**. Extract its ZIP once; `OpenDICOM-De-ID.exe` is directly
+inside, alongside `licenses/` and this guide. Double-click the executable. No
+Python installation or PowerShell commands are needed.
+
+The artifacts named **OpenDICOM-De-ID-…** contain versioned distribution archives
+and SHA-256 files. GitHub wraps those in an outer ZIP: extract that ZIP, then
+extract the application archive inside it. This also applies to the older
+Windows builds, which only offered **OpenDICOM-De-ID-Windows-x86_64**.
 
 This repository is private. Sign in to GitHub with an account that has
 repository access to download its builds. Actions artifacts expire after **14
@@ -156,7 +160,7 @@ changing Python distributions or adding dependencies. Build environments should
 be clean, with no patient files or optional clinical data packages installed.
 
 GitHub Actions test and build jobs contain synthetic tests only. Tagging a
-matching package version (for example `v0.1.1`) produces a **draft prerelease**.
+matching package version (for example `v0.1.2`) produces a **draft prerelease**.
 Review artifacts before publishing the draft. Signing and notarization require
 separately configured credentials and are not part of these workflows.
 

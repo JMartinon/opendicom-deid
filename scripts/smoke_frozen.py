@@ -56,7 +56,9 @@ def main() -> None:
                 roi.ContourSequence = [contour]
                 ds.ROIContourSequence = [roi]
             instances.append(ds)
-            ds.save_as(source / f"{modality}.dcm", enforce_file_format=True)
+            directory = source / "synthetic-patient" / modality
+            directory.mkdir(parents=True, exist_ok=True)
+            ds.save_as(directory / f"{modality}.dcm", enforce_file_format=True)
         report = root / "report.json"
         # Windows --windowed builds have no stdout: verify exit status and files.
         subprocess.run(
@@ -66,7 +68,14 @@ def main() -> None:
         result = json.loads(report.read_text(encoding="utf-8"))
         assert result["status"] == "COMPLETED" and result["output_count"] == 2
         assert not any(finding["severity"] == "FAIL" for finding in result["findings"])
-        saved = {str(ds.Modality): ds for ds in (pydicom.dcmread(p) for p in output.glob("*.dcm"))}
+        paths = list(output.rglob("*.dcm"))
+        assert len(paths) == 2
+        assert len({path.parent.parent for path in paths}) == 1
+        assert len({path.parent for path in paths}) == 2
+        assert all(len(path.relative_to(output).parts) == 3 for path in paths)
+        assert all(part.startswith("group-") for path in paths
+                   for part in path.relative_to(output).parts[:-1])
+        saved = {str(ds.Modality): ds for ds in (pydicom.dcmread(p) for p in paths)}
         assert saved["CT"].PixelData == instances[0].PixelData
         reference = saved["RTSTRUCT"].ROIContourSequence[0].ContourSequence[0].ContourImageSequence[0]
         assert reference.ReferencedSOPInstanceUID == saved["CT"].SOPInstanceUID

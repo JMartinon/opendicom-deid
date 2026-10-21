@@ -116,13 +116,20 @@ def main() -> None:
             check=True,
         )
     elif system == "Windows":
+        # Actions adds its own ZIP wrapper. Upload this ready-to-run folder
+        # separately so desktop users only need to extract once.
+        desktop = ROOT / "dist" / "windows-app"
+        if desktop.exists():
+            shutil.rmtree(desktop)
+        desktop.mkdir()
+        shutil.copy2(ROOT / "dist" / f"{APP_NAME}.exe", desktop / f"{APP_NAME}.exe")
+        shutil.copytree(licenses, desktop / "licenses")
+        shutil.copy2(ROOT / "docs" / "distribution.md", desktop / "distribution.md")
         archive = release / f"{stem}.zip"
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
-            bundle.write(ROOT / "dist" / f"{APP_NAME}.exe", f"{APP_NAME}.exe")
-            for path in sorted(licenses.rglob("*")):
+            for path in sorted(desktop.rglob("*")):
                 if path.is_file():
-                    bundle.write(path, Path("licenses") / path.relative_to(licenses))
-            bundle.write(ROOT / "docs" / "distribution.md", "distribution.md")
+                    bundle.write(path, path.relative_to(desktop))
     else:
         folder = ROOT / "dist" / APP_NAME
         shutil.copy2(ROOT / "docs" / "distribution.md", folder / "README.md")

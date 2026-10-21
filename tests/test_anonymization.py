@@ -66,7 +66,7 @@ def test_multiple_patients_and_multiple_studies_are_consistent(tmp_path, dicom_f
     report = process_batch(source, tmp_path / "output")
     assert report.ok, report.to_dict()
     results = {int(ds.InstanceNumber): ds for ds in (
-        pydicom.dcmread(path) for path in (tmp_path / "output").glob("*.dcm")
+        pydicom.dcmread(path) for path in (tmp_path / "output").rglob("*.dcm")
     )}
     assert results[1].PatientID == results[2].PatientID
     assert results[1].PatientID != results[3].PatientID

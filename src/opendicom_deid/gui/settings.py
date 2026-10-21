@@ -13,7 +13,7 @@ class AdvancedSettings(ttk.Frame):
         super().__init__(parent, padding=(20, 18), style="Card.TFrame")
         self.prefix = tk.StringVar(value="SUBJECT")
         self.date_mode = tk.StringVar(value="Remove dates")
-        self.grouping = tk.BooleanVar(value=False)
+        self.grouping = tk.BooleanVar(value=True)
         self.columnconfigure(1, weight=1)
         ttk.Label(self, text="Patient ID prefix", style="Field.TLabel").grid(
             row=0, column=0, sticky="w", padx=(0, 12)
@@ -43,14 +43,15 @@ class AdvancedSettings(ttk.Frame):
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 20))
         self.group_check = ttk.Checkbutton(
             self,
-            text="Preserve source grouping with neutral folder names",
+            text="Preserve patient folders and subfolders",
             variable=self.grouping,
         )
         self.group_check.grid(row=4, column=0, columnspan=2, sticky="w")
         ttk.Label(
             self,
             style="CardMuted.TLabel",
-            text="Separate dose runs remain separate. Original folder names are never copied.",
+            text="The nested folder structure is kept using neutral names. Patients sharing "
+            "one source folder get separate folders. Uncheck to put all files in one folder.",
             wraplength=500,
         ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 20))
         ttk.Label(

@@ -130,6 +130,10 @@ def process_batch(
         # Source grouping is reconstructed using only neutral ordinals at each level.
         groups: dict[Path, Path] = {Path("."): Path(".")}
         counts: dict[Path, int] = {}
+        directory_patients: dict[Path, set[tuple[str, ...]]] = {}
+        if options.organization == "source":
+            for record in scan.files:
+                directory_patients.setdefault(record.relative_parent, set()).add(record.patient_key)
 
         def safe_parent(relative: Path) -> Path:
             if relative in groups:
@@ -162,6 +166,11 @@ def process_batch(
             )
             _reset_file_meta(ds)
             parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")
+            if options.organization == "source" and len(directory_patients[record.relative_parent]) > 1:
+                # Preserve the source hierarchy, splitting only directories whose
+                # direct files belong to different patients. Use batch pseudonyms,
+                # never patient identifiers or names from the input paths.
+                parent /= pseudonym
             # Keep genuine copies, without assigning different instance UIDs or colliding paths.
             target = staging / parent / f"{ds.SOPInstanceUID}-{index:06d}.dcm"
             _write(ds, target)

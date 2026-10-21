@@ -61,6 +61,13 @@ identical copies and conflicting duplicates; external references; consistent
 date shifts; source grouping; cancellations and partial failures; protected
 destinations; malformed metadata; and reports that exclude source identities.
 
+Output organization regressions exercise nested patient/study folders, repeated
+folder names, duplicate instances in different subfolders, and several patients
+sharing a source folder. Default output preserves neutral directory ancestry
+and separates patients; explicit flat output is also checked. Cancellation and
+write failures must discard incomplete nested output without changing input or
+populating an existing empty destination.
+
 The ViewRay private FD-length regression is tested by inserting the six-byte
 value `b'0.938 '` at `(01F1,1026)`, both at the root and inside a sequence. The
 reader removes raw private elements before conversion. It never enables
@@ -100,7 +107,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **158 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **166 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked.

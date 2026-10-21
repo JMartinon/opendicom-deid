@@ -66,7 +66,7 @@ def test_patient_id_is_scoped_by_issuer(tmp_path, dicom_factory, dicom_writer):
         dicom_writer(ds, source / f"{index}.dcm")
     report = process_batch(source, tmp_path / "output")
     assert report.ok, report.summary()
-    patients = {str(pydicom.dcmread(path).PatientID) for path in (tmp_path / "output").glob("*.dcm")}
+    patients = {str(pydicom.dcmread(path).PatientID) for path in (tmp_path / "output").rglob("*.dcm")}
     assert len(patients) == 2
 
 
