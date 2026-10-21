@@ -68,6 +68,13 @@ and separates patients; explicit flat output is also checked. Cancellation and
 write failures must discard incomplete nested output without changing input or
 populating an existing empty destination.
 
+GUI smoke checks verify that choosing input, editing the path, changing focus,
+and toggling recursion start no background scan. The explicit scan and
+De-identify buttons are exercised with a generated CT object. On Linux,
+`scripts/check_folder_dialog.py` uses actual X11 mouse press/release events to
+check that the path dropdown stays open, an ancestor can be selected, and
+cancellation restores both ordinary and nested modal dialogs correctly.
+
 The ViewRay private FD-length regression is tested by inserting the six-byte
 value `b'0.938 '` at `(01F1,1026)`, both at the root and inside a sequence. The
 reader removes raw private elements before conversion. It never enables

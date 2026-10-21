@@ -33,13 +33,17 @@ def ask_directory(*, parent: tk.Misc, **options: object) -> str:
                     "event generate %W <<Invoke>>; break",
                 )
 
-    previous = parent.bind_class("TkChooseDir", "<Map>")
-    callback = parent.bind_class("TkChooseDir", "<Map>", prepare, add="+")
+    # bind_class registers its Python callback on the root even when called
+    # through a Toplevel. Delete through that same owner so Tkinter's command
+    # registry cannot retain a stale entry and try to delete it again at exit.
+    root = parent._root()
+    previous = root.bind_class("TkChooseDir", "<Map>")
+    callback = root.bind_class("TkChooseDir", "<Map>", prepare, add="+")
     try:
         # Depending on the Tcl object's internal representation, Tkinter may
         # return either "" or () for cancellation. Expose one string contract.
         return filedialog.askdirectory(parent=parent, **options) or ""
     finally:
-        parent.tk.call("bind", "TkChooseDir", "<Map>", previous or "")
+        root.tk.call("bind", "TkChooseDir", "<Map>", previous or "")
         if callback:
-            parent.deletecommand(callback)
+            root.deletecommand(callback)
