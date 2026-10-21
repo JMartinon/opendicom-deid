@@ -7,10 +7,12 @@ import subprocess
 import sys
 import warnings
 from pathlib import Path
+from threading import Event
 
 import pytest
 from pydicom.uid import CTImageStorage, ExplicitVRLittleEndian
 
+from opendicom_deid.core import scanner, storage_inspection
 from opendicom_deid.core.scanner import scan_directory
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "inspect_storage.py"
@@ -30,7 +32,7 @@ def test_header_inspection_limits_reads_and_output(
     ds = dicom_factory()
     filename = "Synthetic-Confidential-Patient.dcm"
     dicom_writer(ds, tmp_path / filename)
-    original_reader = inspector.pydicom.dcmread
+    original_reader = storage_inspection.pydicom.dcmread
     reads = []
 
     def read(*args, **kwargs):
@@ -43,7 +45,7 @@ def test_header_inspection_limits_reads_and_output(
         reads.append(dataset)
         return dataset
 
-    monkeypatch.setattr(inspector.pydicom, "dcmread", read)
+    monkeypatch.setattr(storage_inspection.pydicom, "dcmread", read)
     assert inspector.main([str(tmp_path), "--file-id", "1"]) == 0
     exposed = capsys.readouterr()
     assert not exposed.err
@@ -130,18 +132,20 @@ def test_parser_diagnostics_never_escape(
             logging.getLogger("pydicom").warning("Synthetic^Confidential")
         return ds
 
-    monkeypatch.setattr(inspector.pydicom, "dcmread", read)
-    result = inspector.inspect_header(path, 1, show_private_class_uids=True)
+    monkeypatch.setattr(storage_inspection.pydicom, "dcmread", read)
+    result = storage_inspection.inspect_header(path, 1, show_private_class_uids=True)
     assert result["status"] == "HEADER_READ_FAILED"
     captured = capsys.readouterr()
     assert "Synthetic^Confidential" not in json.dumps(result) + captured.out + captured.err
 
 
-def test_private_option_cannot_expose_invalid_uid_or_unknown_transfer_syntax(inspector):
+def test_private_option_cannot_expose_invalid_uid_or_unknown_transfer_syntax():
     for value in ("Synthetic^Confidential", "01.2.3", "1." + "2" * 64, ["1.2.3", "1.2.4"]):
-        result = inspector._uid_description(value, "SOP Class", True)
+        result = storage_inspection._uid_description(value, "SOP Class", True)
         assert result["uid"] in {"REDACTED", None}
-    assert inspector._uid_description("1.2.3.4.5", "Transfer Syntax", True)["uid"] == "REDACTED"
+    assert storage_inspection._uid_description(
+        "1.2.3.4.5", "Transfer Syntax", True,
+    )["uid"] == "REDACTED"
 
 
 def test_script_runs_directly_without_installed_checkout(tmp_path, dicom_factory, dicom_writer):
@@ -163,3 +167,114 @@ def test_invalid_inventory_number_is_a_safe_error(
     exposed = capsys.readouterr()
     assert json.loads(exposed.out)["status"] == "FAILED"
     assert "synthetic-confidential" not in exposed.out + exposed.err
+
+
+def test_core_inspection_matches_cli_and_honors_recursion(
+    tmp_path, dicom_factory, dicom_writer, inspector, capsys,
+):
+    dicom_writer(dicom_factory("CT"), tmp_path / "a.dcm")
+    dicom_writer(dicom_factory("MR"), tmp_path / "nested" / "b.dcm")
+    result = storage_inspection.inspect_storage(tmp_path, file_id=2)
+    assert result["files"][0]["file_id"] == "File 000002"
+    assert result["files"][0]["modality"] == "MR"
+    assert inspector.main([str(tmp_path), "--file-id", "2"]) == 0
+    assert json.loads(capsys.readouterr().out) == result
+    shallow = storage_inspection.inspect_storage(tmp_path, recursive=False)
+    assert len(shallow["files"]) == 1
+    assert shallow["files"][0]["modality"] == "CT"
+
+
+@pytest.mark.parametrize("number", [0, -1, "Synthetic^Confidential", True, 1.5])
+def test_core_invalid_file_number_returns_only_safe_failure(tmp_path, number):
+    assert storage_inspection.inspect_storage(tmp_path, file_id=number) == {
+        "status": "FAILED", "message": "File numbers must be positive.",
+    }
+
+
+def test_core_missing_directory_returns_only_safe_failure(tmp_path):
+    assert storage_inspection.inspect_storage(tmp_path / "Synthetic^Confidential") == {
+        "status": "FAILED", "message": "Select a readable input directory.",
+    }
+
+
+def test_core_excluded_inventory_does_not_guess_file_number(
+    tmp_path, dicom_factory, dicom_writer,
+):
+    target = dicom_writer(dicom_factory(), tmp_path / "b.dcm")
+    try:
+        (tmp_path / "a-synthetic-private-link.dcm").symlink_to(target)
+    except OSError:
+        pytest.skip("Symbolic links are unavailable.")
+    assert storage_inspection.inspect_storage(tmp_path, file_id=1) == {
+        "status": "FAILED",
+        "message": "The input inventory contains excluded or unreadable entries.",
+    }
+
+
+def test_core_inventory_exception_does_not_escape(tmp_path, monkeypatch, capsys):
+    def unavailable(*args, **kwargs):
+        raise OSError("Synthetic^Confidential")
+
+    monkeypatch.setattr(storage_inspection, "_paths", unavailable)
+    result = storage_inspection.inspect_storage(tmp_path)
+    assert result == {"status": "FAILED", "message": "Select a readable input directory."}
+    captured = capsys.readouterr()
+    assert not captured.out + captured.err
+
+
+def test_core_cancelled_before_inventory_does_not_read(tmp_path, monkeypatch):
+    cancel = Event()
+    cancel.set()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Cancelled inspection must not read the directory.")
+
+    monkeypatch.setattr(storage_inspection, "_paths", unexpected)
+    assert storage_inspection.inspect_storage(tmp_path, cancel=cancel) == {
+        "status": "CANCELLED", "message": "Storage inspection was cancelled.",
+    }
+
+
+def test_core_cancelled_during_inventory_does_not_read_headers(
+    tmp_path, dicom_factory, dicom_writer, monkeypatch,
+):
+    dicom_writer(dicom_factory(), tmp_path / "a.dcm")
+    dicom_writer(dicom_factory(), tmp_path / "nested" / "b.dcm")
+    cancel = Event()
+    walk = scanner.os.walk
+
+    def cancel_between_directories(*args, **kwargs):
+        for entry in walk(*args, **kwargs):
+            yield entry
+            cancel.set()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Cancelled inventory must not read any headers.")
+
+    monkeypatch.setattr(scanner.os, "walk", cancel_between_directories)
+    monkeypatch.setattr(storage_inspection, "inspect_header", unexpected)
+    assert storage_inspection.inspect_storage(tmp_path, cancel=cancel) == {
+        "status": "CANCELLED", "message": "Storage inspection was cancelled.",
+    }
+
+
+def test_core_cancellation_discards_partial_results(
+    tmp_path, dicom_factory, dicom_writer, monkeypatch,
+):
+    dicom_writer(dicom_factory(), tmp_path / "a.dcm")
+    dicom_writer(dicom_factory(), tmp_path / "b.dcm")
+    cancel = Event()
+    inspected = []
+    inspect_header = storage_inspection.inspect_header
+
+    def cancel_after_header(*args, **kwargs):
+        result = inspect_header(*args, **kwargs)
+        inspected.append(result["file_id"])
+        cancel.set()
+        return result
+
+    monkeypatch.setattr(storage_inspection, "inspect_header", cancel_after_header)
+    assert storage_inspection.inspect_storage(tmp_path, cancel=cancel) == {
+        "status": "CANCELLED", "message": "Storage inspection was cancelled.",
+    }
+    assert inspected == ["File 000001"]

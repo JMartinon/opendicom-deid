@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -23,75 +22,7 @@ from pathlib import Path
 # this Python environment. Only the existing runtime dependencies are needed.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import pydicom  # noqa: E402
-from pydicom.errors import InvalidDicomError  # noqa: E402
-from pydicom.uid import UID_dictionary  # noqa: E402
-
-from opendicom_deid.core.diagnostics import private_diagnostics  # noqa: E402
-from opendicom_deid.core.models import Finding  # noqa: E402
-from opendicom_deid.core.scanner import _paths  # noqa: E402
-from opendicom_deid.core.sop_classes import (  # noqa: E402
-    SUPPORTED_SOP_CLASSES,
-    modality_label,
-)
-
-
-def _uid_description(value, kind: str, show_private_class_uids: bool) -> dict:
-    text = value if isinstance(value, str) else ""
-    definition = UID_dictionary.get(text)
-    if definition and definition[1] == kind:
-        return {"name": definition[0], "uid": text}
-    if not text:
-        return {"name": "Missing or invalid", "uid": None}
-    numeric_uid = len(text) <= 64 and re.fullmatch(
-        r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))*", text
-    ) is not None
-    if kind == "SOP Class" and show_private_class_uids and numeric_uid:
-        return {"name": "Unknown or private SOP class", "uid": text}
-    return {"name": "Unrecognized or private", "uid": "REDACTED"}
-
-
-def inspect_header(path: Path, file_id: int, *, show_private_class_uids: bool = False) -> dict:
-    """Read only selected header values and return a deliberately small safe record."""
-    label = f"File {file_id:06d}"
-    failure = {
-        "file_id": label,
-        "status": "HEADER_READ_FAILED",
-        "message": "The selected file header could not be safely inspected.",
-    }
-    try:
-        with private_diagnostics() as diagnostics:
-            try:
-                ds = pydicom.dcmread(
-                    path, stop_before_pixels=True, specific_tags=["SOPClassUID", "Modality"]
-                )
-            except InvalidDicomError:
-                ds = pydicom.dcmread(
-                    path, force=True, stop_before_pixels=True,
-                    specific_tags=["SOPClassUID", "Modality"],
-                )
-            sop_class = ds.get("SOPClassUID")
-            if not sop_class:
-                return failure
-            meta = getattr(ds, "file_meta", {})
-            result = {
-                "file_id": label,
-                "status": "INSPECTED",
-                "sop_class": _uid_description(sop_class, "SOP Class", show_private_class_uids),
-                "supported_storage_class": str(sop_class) in SUPPORTED_SOP_CLASSES,
-                "modality": modality_label(ds),
-                "file_meta": {
-                    "media_storage_sop_class": _uid_description(
-                        meta.get("MediaStorageSOPClassUID"), "SOP Class", show_private_class_uids
-                    ),
-                    "transfer_syntax": _uid_description(
-                        meta.get("TransferSyntaxUID"), "Transfer Syntax", False
-                    ),
-                },
-            }
-        return failure if diagnostics.has_warnings else result
-    except Exception:
-        return failure
+from opendicom_deid.core.storage_inspection import inspect_storage  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,35 +35,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Reveal valid numeric unknown/private SOP class UIDs for local inspection only.",
     )
     args = parser.parse_args(argv)
-    if args.file_id is not None and args.file_id < 1:
-        print(json.dumps({"status": "FAILED", "message": "File numbers must be positive."}))
-        return 2
-    try:
-        root = args.directory.expanduser().resolve()
-        if not root.is_dir():
-            raise ValueError
-        findings: list[Finding] = []
-        paths = _paths(root, not args.no_recursive, findings, None)
-    except Exception:
-        print(json.dumps({"status": "FAILED", "message": "Select a readable input directory."}))
-        return 2
-    if findings:
-        # Do not select a possibly shifted label when parts of the inventory
-        # cannot be traversed or include links or special files.
-        print(json.dumps({"status": "FAILED", "message": "The input inventory contains excluded or unreadable entries."}))
-        return 2
-    if args.file_id is not None and args.file_id > len(paths):
-        print(json.dumps({"status": "FAILED", "message": "The requested File number is outside this inventory."}))
-        return 2
-    selected = (
-        [(args.file_id, paths[args.file_id - 1])]
-        if args.file_id is not None else enumerate(paths, 1)
+    result = inspect_storage(
+        args.directory,
+        file_id=args.file_id,
+        recursive=not args.no_recursive,
+        show_private_class_uids=args.show_private_class_uids,
     )
-    results = [
-        inspect_header(path, number, show_private_class_uids=args.show_private_class_uids)
-        for number, path in selected
-    ]
-    print(json.dumps({"files": results}, indent=2))
+    print(json.dumps(result, indent=2))
+    if result.get("status") in {"FAILED", "CANCELLED"}:
+        return 2
+    results = result["files"]
     return 0 if results and all(item["status"] == "INSPECTED" for item in results) else 1
 
 

@@ -160,7 +160,7 @@ changing Python distributions or adding dependencies. Build environments should
 be clean, with no patient files or optional clinical data packages installed.
 
 GitHub Actions test and build jobs contain synthetic tests only. Tagging a
-matching package version (for example `v0.1.2`) produces a **draft prerelease**.
+matching package version (for example `v0.1.3`) produces a **draft prerelease**.
 Review artifacts before publishing the draft. Signing and notarization require
 separately configured credentials and are not part of these workflows.
 

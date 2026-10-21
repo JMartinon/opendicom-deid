@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.2 is an initial validation release.** Automated checks do not prove
+**Version 0.1.3 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -143,15 +143,30 @@ the in-memory batch comparison. Privacy review remains required in every case.
 ### Identify an unsupported storage format
 
 If a report names a neutral file number such as **File 000199**, a local helper
-can inspect that file's technical storage information automatically. From your
-Python environment, after `git pull --ff-only`, run:
+can inspect that file's technical storage information automatically.
+
+**Desktop app (Windows, macOS, or Linux; no Python or terminal needed):**
+
+1. Open version 0.1.3 or newer on the computer containing the original data.
+2. Select the same input folder and **Include subfolders** setting used in the failed run.
+3. Click **Inspect format…**, enter **199**, and click **Inspect**. If you first
+   run **Scan input**, the first unsupported file number is filled in automatically.
+4. If the storage class is unknown/private, check **Show vendor-specific storage
+   class IDs** and click **Inspect** again.
+5. Click **Copy technical details** to copy the small JSON result for troubleshooting.
+
+No output folder is needed. This works offline on the computer holding the data;
+the source dataset does not need to be moved. Nothing is copied to the clipboard
+until you click the copy button. Private class IDs are revealed only on request.
+
+**Source checkout:** from your Python environment, after `git pull --ff-only`, run:
 
 ```sh
 python scripts/inspect_storage.py "/path/to/the/same/input-folder" --file-id 199
 ```
 
-No application rebuild is needed. Keep the input tree unchanged so the file
-number matches the report. The helper reads selected header fields without
+The source helper needs no application rebuild. For either method, keep the
+input tree unchanged so the file number matches the report. Inspection reads selected header fields without
 reading pixels, writing output, or printing filenames, patient fields, or
 instance/study/series UIDs. If it reports an unknown/private storage class,
 `--show-private-class-uids` reveals only that class's numeric UID for local
@@ -207,7 +222,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.2`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.3`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

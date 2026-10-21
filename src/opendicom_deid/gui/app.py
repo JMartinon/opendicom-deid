@@ -12,11 +12,12 @@ from tkinter.scrolledtext import ScrolledText
 
 from .. import __version__
 from ..cli import report_path_allowed
-from ..core.models import Cancelled, Progress, ScanResult
+from ..core.models import Cancelled, Finding, Progress, ScanResult
 from ..core.report import Report, format_findings
 from .dialogs import ask_directory
 from .licenses import license_text
 from .settings import AdvancedSettings
+from .storage_inspection import StorageInspectionDialog
 from .theme import BACKGROUND, MUTED, SURFACE, TEXT, apply_theme
 
 
@@ -78,6 +79,8 @@ class App(tk.Tk):
         self._closing = False
         self._advanced_visible = False
         self._folder_window: tk.Toplevel | None = None
+        self._inspection_window: StorageInspectionDialog | None = None
+        self._unsupported_selection: tuple[str, bool, str] | None = None
         self._last_scan: tuple[str, bool] | None = None
         self._report: Report | None = None
         self._report_input: Path | None = None
@@ -129,7 +132,11 @@ class App(tk.Tk):
         )
         self.recursive_check.grid(row=0, column=0, sticky="w")
         self.scan_button = ttk.Button(options, text="Scan input", command=self.scan)
-        self.scan_button.grid(row=0, column=1, sticky="e")
+        self.scan_button.grid(row=0, column=2, sticky="e")
+        self.inspect_button = ttk.Button(
+            options, text="Inspect format…", command=self.show_storage_inspection
+        )
+        self.inspect_button.grid(row=0, column=1, sticky="e", padx=(8, 8))
         ttk.Label(
             directories, textvariable=self.scan_summary, style="CardMuted.TLabel", wraplength=700
         ).grid(row=5, sticky="w", pady=(4, 0))
@@ -385,12 +392,60 @@ class App(tk.Tk):
             self.output_new,
             self.recursive_check,
             self.scan_button,
+            self.inspect_button,
             self.start_button,
         ):
             widget.configure(state=state)
         self.settings.set_enabled(not busy)
         self.cancel_button.configure(state="normal" if busy else "disabled")
         self.save_button.configure(state="normal" if self._report and not busy else "disabled")
+        if self._inspection_window is not None:
+            self._inspection_window.set_busy(busy)
+
+    def _remember_unsupported(self, findings: list[Finding]) -> None:
+        self._unsupported_selection = None
+        for finding in findings:
+            if finding.code == "UNSUPPORTED_OBJECT" and finding.file_id:
+                number = finding.file_id.removeprefix("File ")
+                if number.isascii() and number.isdecimal():
+                    self._unsupported_selection = (
+                        self.input_path.get().strip(), self.recursive.get(), str(int(number))
+                    )
+                    break
+
+    def show_storage_inspection(self) -> None:
+        if self._busy:
+            return
+        value = self.input_path.get().strip()
+        if not value:
+            self.status.set("Select the same input folder used in the failed run first.")
+            return
+        if self._inspection_window is not None:
+            self._inspection_window.lift()
+            return
+        recursive = self.recursive.get()
+        suggestion = self._unsupported_selection
+        file_number = suggestion[2] if suggestion and suggestion[:2] == (value, recursive) else ""
+
+        def inspect(number: int, show_private: bool) -> None:
+            from ..core.storage_inspection import inspect_storage
+
+            self.status.set("Inspecting technical format details. No files are changed.")
+            self._launch(
+                lambda: inspect_storage(
+                    Path(value), file_id=number, recursive=recursive,
+                    show_private_class_uids=show_private, cancel=self._cancel,
+                ),
+                "storage_inspection",
+            )
+
+        def dismissed() -> None:
+            self._inspection_window = None
+
+        self._inspection_window = StorageInspectionDialog(
+            self, file_number=file_number, inspect_callback=inspect,
+            cancel_callback=self.cancel, close_callback=dismissed,
+        )
 
     def _launch(self, job: Callable[[], object], kind: str) -> None:
         self._cancel = Event()
@@ -499,6 +554,7 @@ class App(tk.Tk):
             self._set_busy(False)
             if kind == "scan":
                 assert isinstance(value, ScanResult)
+                self._remember_unsupported(value.findings)
                 modalities = " · ".join(
                     f"{name}: {count}" for name, count in sorted(value.modalities.items())
                 )
@@ -518,6 +574,7 @@ class App(tk.Tk):
                 )
             elif kind == "report":
                 assert isinstance(value, Report)
+                self._remember_unsupported(value.findings)
                 self._report = value
                 self.save_button.configure(state="normal")
                 self.counts.set(f"Processed: {value.output_count} / {value.input_count} files")
@@ -530,11 +587,24 @@ class App(tk.Tk):
                     }[value.status]
                 )
                 self._set_details(value.summary())
+            elif kind == "storage_inspection":
+                assert isinstance(value, dict)
+                self.progress.configure(mode="determinate", value=0)
+                self.counts.set("Format inspection finished")
+                self.status.set("Format inspection finished. No files were changed.")
+                if self._inspection_window is not None:
+                    self._inspection_window.show_result(value)
             elif kind == "cancelled":
+                if self._inspection_window is not None:
+                    self._inspection_window.show_result({"status": "CANCELLED"})
                 self.status.set("Cancelled. No completed dataset was published.")
                 self.scan_summary.set("Scan cancelled; counts are incomplete.")
                 self.progress.configure(mode="determinate", value=0)
             else:
+                if self._inspection_window is not None:
+                    self._inspection_window.show_result({
+                        "status": "FAILED", "message": "The format could not be safely inspected."
+                    })
                 self.status.set("The operation failed. No success is claimed.")
                 self._set_details(
                     "Check directory access, available space, and DICOM support. Parser error text is omitted to protect patient information."
@@ -629,7 +699,14 @@ class App(tk.Tk):
 
 
 def check_startup() -> None:
-    """Exercise real Tk resources in source and frozen packaging checks."""
+    """Exercise Tk and a synthetic header through source and frozen GUI builds."""
+    import json
+    import tempfile
+    import time
+
+    from pydicom.dataset import FileDataset, FileMetaDataset
+    from pydicom.uid import EncapsulatedPDFStorage, ExplicitVRLittleEndian, generate_uid
+
     app = App()
     try:
         app.update_idletasks()
@@ -639,12 +716,48 @@ def check_startup() -> None:
         app._new_output_folder()
         app.update()
         assert app._folder_window is not None
-        # Exercise the same close callback as the window manager. No folder is
-        # created by this startup check, including on frozen CI builds.
+        # Exercise the same close callback as the window manager without
+        # creating an output folder.
         app.tk.call(app._folder_window.protocol("WM_DELETE_WINDOW"))
         app.update()
         assert app._folder_window is None
         assert app.grab_current() is None
+        # A real worker read verifies that frozen builds contain the header
+        # inspector, UID dictionary, and its GUI result path. Synthetic only.
+        with tempfile.TemporaryDirectory(prefix="opendicom-startup-") as temporary:
+            meta = FileMetaDataset()
+            meta.TransferSyntaxUID = ExplicitVRLittleEndian
+            meta.MediaStorageSOPClassUID = EncapsulatedPDFStorage
+            meta.MediaStorageSOPInstanceUID = generate_uid()
+            ds = FileDataset(None, {}, file_meta=meta, preamble=b"\0" * 128)
+            ds.SOPClassUID = EncapsulatedPDFStorage
+            ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+            ds.Modality = "DOC"
+            ds.PatientID, ds.PatientName = "SYNTHETIC-ID", "Synthetic^Only"
+            ds.save_as(Path(temporary) / "synthetic.dcm", enforce_file_format=True)
+            app.input_path.set(temporary)
+            app.inspect_button.invoke()
+            app.update()
+            dialog = app._inspection_window
+            assert dialog is not None and not app._busy
+            dialog.file_number.set("1")
+            dialog.inspect_button.invoke()
+            deadline = time.monotonic() + 15
+            while app._busy:
+                assert time.monotonic() < deadline, "Synthetic GUI inspection timed out."
+                app.update()
+                time.sleep(0.01)
+            text = dialog.details.get("1.0", "end")
+            result = json.loads(text)["files"][0]
+            assert result["status"] == "INSPECTED"
+            assert result["sop_class"]["uid"] == str(EncapsulatedPDFStorage)
+            assert result["modality"] == "DOC" and not result["supported_storage_class"]
+            assert "SYNTHETIC-ID" not in text and "Synthetic^Only" not in text
+            assert str(ds.SOPInstanceUID) not in text and temporary not in text
+            dialog.close()
+            app.update()
+            assert app._inspection_window is None
+            assert app.grab_current() is None
     finally:
         app.destroy()
 

@@ -47,6 +47,12 @@ def main() -> None:
         assert app._folder_window is not None
         save(app._folder_window, "new-folder.png")
         app.tk.call(app._folder_window.protocol("WM_DELETE_WINDOW"))
+        app.input_path.set(str(Path.cwd()))
+        app.show_storage_inspection()
+        assert app._inspection_window is not None
+        app._inspection_window.file_number.set("199")
+        save(app._inspection_window, "inspect-format.png")
+        app._inspection_window.close()
     finally:
         app.destroy()
 

@@ -91,6 +91,14 @@ De-identify buttons are exercised with a generated CT object. On Linux,
 check that the path dropdown stays open, an ancestor can be selected, and
 cancellation restores both ordinary and nested modal dialogs correctly.
 
+Desktop format inspection uses the same header-only API as the local source
+helper. Synthetic GUI checks exercise unsupported standard and private storage
+classes, explicit private-class-ID opt-in, clipboard output, stale-result
+clearing, and unchanged input files. Unit tests also cover cancellation without
+partial results, recursion, invalid file numbers, and safe parser errors. This
+diagnostic helps identify an unsupported object; it does not add storage-class
+support or establish real ViewRay compatibility.
+
 The ViewRay private FD-length regression is tested by inserting the six-byte
 value `b'0.938 '` at `(01F1,1026)`, both at the root and inside a sequence. The
 reader removes raw private elements before conversion. It never enables
@@ -130,7 +138,7 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **194 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **206 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked.
