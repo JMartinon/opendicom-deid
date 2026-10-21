@@ -57,7 +57,10 @@ def exercise(app: App, parent: tk.Misc, initial: Path, *, fixed: bool) -> bool:
                 menu_y = int(app.tk.call("winfo", "rooty", menu))
                 mouse_click(menu_x + 20, menu_y + (entry_y + next_y) // 2)
                 selected = str(app.tk.call(button, "cget", "-textvariable"))
-                assert app.tk.getvar(selected) == str(initial.parent)
+                selected_path = str(app.tk.getvar(selected))
+                assert selected_path == str(initial.parent), (
+                    f"Ancestor click chose {selected_path!r}, expected {str(initial.parent)!r}."
+                )
                 assert int(app.tk.call("winfo", "viewable", dialog))
         except BaseException as exc:
             failures.append(exc)
@@ -80,10 +83,11 @@ def exercise(app: App, parent: tk.Misc, initial: Path, *, fixed: bool) -> bool:
     finally:
         app.after_cancel(interaction)
         app.after_cancel(watchdog)
-    assert result == ""
-    assert app.bind_class("TkChooseDir", "<Map>") == original_binding
     if failures:
         raise failures[0]
+    # Tcl can expose the cancelled value as either an empty string or tuple.
+    assert not result, f"Cancelled directory chooser returned {result!r}."
+    assert app.bind_class("TkChooseDir", "<Map>") == original_binding
     assert posted, "The folder chooser interaction did not run."
     return posted[0]
 

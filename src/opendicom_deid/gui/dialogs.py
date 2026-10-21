@@ -16,7 +16,7 @@ def ask_directory(*, parent: tk.Misc, **options: object) -> str:
     dialog widgets; ordinary application menus are unaffected.
     """
     if parent.tk.call("tk", "windowingsystem") != "x11":
-        return filedialog.askdirectory(parent=parent, **options)
+        return filedialog.askdirectory(parent=parent, **options) or ""
 
     def prepare(event: tk.Event) -> None:
         # Tk creates these Tcl widgets itself, so event.widget may be a path
@@ -36,7 +36,9 @@ def ask_directory(*, parent: tk.Misc, **options: object) -> str:
     previous = parent.bind_class("TkChooseDir", "<Map>")
     callback = parent.bind_class("TkChooseDir", "<Map>", prepare, add="+")
     try:
-        return filedialog.askdirectory(parent=parent, **options)
+        # Depending on the Tcl object's internal representation, Tkinter may
+        # return either "" or () for cancellation. Expose one string contract.
+        return filedialog.askdirectory(parent=parent, **options) or ""
     finally:
         parent.tk.call("bind", "TkChooseDir", "<Map>", previous or "")
         if callback:
