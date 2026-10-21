@@ -30,7 +30,9 @@ def exercise(app: App, parent: tk.Misc, initial: Path, *, fixed: bool) -> bool:
 
     def mouse_click(x: int, y: int) -> None:
         subprocess.run(
-            ["xdotool", "mousemove", "--sync", str(x), str(y), "mousedown", "1"],
+            # --sync waits for motion, which never arrives when a reopened
+            # chooser puts this control under the pointer's current position.
+            ["xdotool", "mousemove", str(x), str(y), "mousedown", "1"],
             check=True, timeout=5,
         )
         app.update()

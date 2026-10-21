@@ -224,7 +224,7 @@ class App(tk.Tk):
             "<Configure>", lambda event: self._wrap_labels(directories, event.width - 40)
         )
         results.bind("<Configure>", lambda event: self._wrap_labels(results, event.width - 40))
-        self.after(80, self._poll)
+        self._poll_id = self.after(80, self._poll)
 
     def _directory_row(
         self,
@@ -543,7 +543,7 @@ class App(tk.Tk):
             if self._closing:
                 self.destroy()
                 return
-        self.after(80, self._poll)
+        self._poll_id = self.after(80, self._poll)
 
     def save_report(self) -> None:
         if self._report is None or self._report_input is None:
@@ -620,6 +620,12 @@ class App(tk.Tk):
             self.cancel()
         else:
             self.destroy()
+
+    def destroy(self) -> None:
+        if getattr(self, "_poll_id", None) is not None:
+            self.after_cancel(self._poll_id)
+            self._poll_id = None
+        super().destroy()
 
 
 def check_startup() -> None:
