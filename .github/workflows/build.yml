@@ -36,7 +36,7 @@ jobs:
           architecture: ${{ matrix.architecture }}
       - name: Install Linux build and display support
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk python3-venv
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk python3-venv libpython3-dev
       - name: Check build interpreter
         run: python scripts/build_environment.py
       - run: python -m pip install '.[build,dev]'

@@ -135,7 +135,7 @@ Python GUI support once, then build with that interpreter:
 
 ```sh
 sudo apt-get update
-sudo apt-get install python3-tk python3-venv
+sudo apt-get install python3-tk python3-venv libpython3-dev
 PYTHON=/usr/bin/python3 bash scripts/build_linux.sh
 ```
 

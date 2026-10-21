@@ -1,6 +1,7 @@
 """Build entry points reject unusable Python before changing environments."""
 
 import importlib
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -305,3 +306,70 @@ def test_main_keeps_dependency_install_and_build_in_selected_venv(
     assert commands[0][1:4] == ["-m", "pip", "install"]
     assert commands[1][1:] == ["-m", "pytest"]
     assert commands[2][1:] == ["scripts/build.py"]
+
+
+@pytest.mark.parametrize("inherited", ["/different/python/lib", None])
+def test_packaging_prioritizes_selected_runtime_without_changing_process_environment(
+    build_modules, monkeypatch, tmp_path, inherited
+):
+    checks, _ = build_modules
+    library_dir = tmp_path / "selected-python" / "lib"
+    library_dir.mkdir(parents=True)
+    soname = "libpython3.12.so.1.0"
+    (library_dir / soname).touch()
+    monkeypatch.setattr(checks.sys, "platform", "linux")
+    values = {"LIBDIR": str(library_dir), "INSTSONAME": soname}
+    monkeypatch.setattr(checks.sysconfig, "get_config_var", values.get)
+    monkeypatch.setenv("OPENDICOM_TEST_ENV", "preserved")
+    if inherited is None:
+        monkeypatch.delenv("LD_LIBRARY_PATH", raising=False)
+    else:
+        monkeypatch.setenv("LD_LIBRARY_PATH", inherited)
+    original = os.environ.copy()
+
+    prepared = checks.packaging_environment()
+
+    assert prepared["LD_LIBRARY_PATH"].split(os.pathsep) == [str(library_dir)] + (
+        [inherited] if inherited else []
+    )
+    assert prepared["OPENDICOM_TEST_ENV"] == "preserved"
+    assert os.environ == original
+
+
+def test_missing_selected_shared_library_stops_preflight_with_remedy(
+    build_modules, monkeypatch, tmp_path
+):
+    checks, _ = build_modules
+    soname = "libpython3.12.so.1.0"
+    values = {"LIBDIR": str(tmp_path), "INSTSONAME": soname}
+    monkeypatch.setattr(checks.sys, "platform", "linux")
+    monkeypatch.setattr(checks.sysconfig, "get_config_var", values.get)
+    monkeypatch.setitem(
+        sys.modules,
+        "tkinter",
+        SimpleNamespace(Tcl=lambda: SimpleNamespace(eval=lambda command: "8.6.16")),
+    )
+
+    inspected = checks.inspect_environment()
+    assert inspected.error
+    assert str(tmp_path / soname) in inspected.error
+    with pytest.raises(SystemExit) as failure:
+        checks.require_build_environment()
+    message = str(failure.value)
+    assert sys.executable in message
+    assert "libpython3-dev" in message
+
+
+@pytest.mark.parametrize("system", ["darwin", "win32"])
+def test_non_linux_packaging_preserves_environment(build_modules, monkeypatch, system):
+    checks, _ = build_modules
+    monkeypatch.setattr(checks.sys, "platform", system)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/existing/library/path")
+
+    def forbidden_configuration_lookup(*args, **kwargs):
+        pytest.fail("Linux shared-library selection must not run on other platforms")
+
+    monkeypatch.setattr(checks.sysconfig, "get_config_var", forbidden_configuration_lookup)
+    original = os.environ.copy()
+    assert checks.packaging_environment() == original
+    assert os.environ == original

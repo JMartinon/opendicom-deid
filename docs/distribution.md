@@ -83,12 +83,12 @@ described below.
 
 ### Linux build setup
 
-On Ubuntu 24.04 or newer, install Tcl/Tk support for the system interpreter and
-the virtual environment module, then select that interpreter explicitly:
+On Ubuntu 24.04 or newer, install Tcl/Tk support, the virtual environment module,
+and the shared Python library needed for packaging, then select the system interpreter:
 
 ```sh
 sudo apt-get update
-sudo apt-get install python3-tk python3-venv
+sudo apt-get install python3-tk python3-venv libpython3-dev
 PYTHON=/usr/bin/python3 bash scripts/build_linux.sh
 ```
 
@@ -100,6 +100,10 @@ does not fall back to another interpreter if its check fails. A compatible
 selected virtual environment is reused; otherwise the wrapper creates an
 isolated `.venv-build-linux` environment rather than installing into system
 Python. It does not install OS packages automatically.
+
+Packaging prioritizes the selected Python's shared library over libraries from
+other Python installations on `LD_LIBRARY_PATH`. This prevents mixing system
+Python modules with an incompatible runtime from a toolchain or Conda environment.
 
 `python3-tk` matches your distribution's default Python. For example, installing
 it for Ubuntu's Python 3.12 does not supply `_tkinter` to a separately installed

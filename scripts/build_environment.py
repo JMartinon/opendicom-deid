@@ -10,7 +10,9 @@ import json
 import os
 import platform
 import sys
+import sysconfig
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -41,6 +43,42 @@ def inspect_environment() -> BuildEnvironment:
         # The import can fail without _tkinter/shared libraries; Tcl() can raise
         # TclError when its runtime scripts are absent. Neither requires a GUI.
         environment.error = f"Tcl/Tk is unavailable: {type(exc).__name__}: {exc}"
+        return environment
+    try:
+        linux_python_library_directory()
+    except RuntimeError as exc:
+        environment.error = str(exc)
+    return environment
+
+
+def linux_python_library_directory() -> str | None:
+    """Locate the selected runtime's shared library, not one from another Python."""
+    if not sys.platform.startswith("linux"):
+        return None
+    directory = sysconfig.get_config_var("LIBDIR")
+    soname = sysconfig.get_config_var("INSTSONAME")
+    if not directory or not soname or ".so" not in soname:
+        # PyInstaller handles other interpreter layouts, including static builds.
+        return None
+    library = Path(directory) / soname
+    if not library.is_file():
+        raise RuntimeError(
+            f"The selected Python's shared library is missing: {library}. "
+            "Install its matching shared-library package "
+            "(libpython3-dev for Ubuntu's system Python)."
+        )
+    return str(library.parent)
+
+
+def packaging_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    directory = linux_python_library_directory()
+    if directory:
+        # setup-python/Conda can leave another libpython on LD_LIBRARY_PATH.
+        # Debian's executable is statically linked, so only freezing exposes the
+        # mismatch (built-in modules such as _struct then disappear at startup).
+        previous = environment.get("LD_LIBRARY_PATH")
+        environment["LD_LIBRARY_PATH"] = directory + (os.pathsep + previous if previous else "")
     return environment
 
 
@@ -49,7 +87,7 @@ def environment_help() -> str:
         return (
             "For Ubuntu 24.04+ with its system Python, run:\n"
             "  sudo apt-get update\n"
-            "  sudo apt-get install python3-tk python3-venv\n"
+            "  sudo apt-get install python3-tk python3-venv libpython3-dev\n"
             "  PYTHON=/usr/bin/python3 bash scripts/build_linux.sh\n"
             "python3-tk belongs to the distribution's default Python; it does not add Tk "
             "to a custom Python 3.14 installation. For another Python, install matching "

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
-import os
 import platform
 import shutil
 import subprocess
@@ -13,7 +12,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from build_environment import require_build_environment
+from build_environment import packaging_environment, require_build_environment
 from collect_licenses import collect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +92,7 @@ def main() -> None:
                 ]
             )
     command.append(str(ROOT / "scripts" / "desktop_entry.py"))
-    build_env = os.environ.copy()
+    build_env = packaging_environment()
     build_env["PYINSTALLER_CONFIG_DIR"] = str(ROOT / "build" / "pyinstaller-cache")
     subprocess.run(command, cwd=ROOT, env=build_env, check=True)
     version = importlib.metadata.version("opendicom-deid")
