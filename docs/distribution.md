@@ -160,7 +160,7 @@ changing Python distributions or adding dependencies. Build environments should
 be clean, with no patient files or optional clinical data packages installed.
 
 GitHub Actions test and build jobs contain synthetic tests only. Tagging a
-matching package version (for example `v0.1.6`) produces a **draft prerelease**.
+matching package version (for example `v0.1.7`) produces a **draft prerelease**.
 Review artifacts before publishing the draft. Signing and notarization require
 separately configured credentials and are not part of these workflows.
 
@@ -170,6 +170,8 @@ separately configured credentials and are not part of these workflows.
 2. Launch the extracted artifact on a clean computer without Python.
 3. Scan and process the synthetic RT reference chain; read every validation
    result and confirm output counts, reference integrity, and unchanged pixels.
+   For version 0.1.7, also exercise the synthetic ViewRay reference-class
+   correction with the research option enabled and check its explicit warning.
 4. Verify cancellation, invalid output directories, report export, and About
    license viewing. Reports must use a new filename outside input.
 5. Import a synthetic output into the intended independent viewer, including

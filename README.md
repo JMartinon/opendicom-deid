@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.6 is an initial validation release.** Automated checks do not prove
+**Version 0.1.7 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -16,7 +16,8 @@ sharing it. No claim of a fully verified DICOM confidentiality profile is made.
 
 - Recursively discovers DICOM files and shows counts by modality.
 - Builds one UID mapping for the complete batch, including arbitrarily nested
-  references, while retaining technical UIDs such as SOP Class and Transfer Syntax.
+  references, while retaining technical UIDs such as SOP Class and Transfer Syntax,
+  except for the narrowly scoped ViewRay reference correction described below.
 - Assigns different patient pseudonyms within a batch and uses each patient's
   pseudonym consistently across studies.
 - Removes private metadata by default; offers date removal or consistent date
@@ -65,7 +66,7 @@ you want a flat output directory (CLI: `--organization flat`).
 
 ### Machine and beam information
 
-Version 0.1.6 retains these six public text fields by default, including in
+Since version 0.1.6, these six public text fields are retained by default, including in
 retained sequences: `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
 `TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. It screens them against
 known patient names, identifiers and entity/reference UIDs across the complete
@@ -103,12 +104,24 @@ export in its authorized clinical storage if future reconstruction is required.
 
 The mode requires public beam/control-point data with coherent numbers, counts,
 indexes, geometry, and meterset weights. It preserves the original private class
-UID in the plan, file meta, and references; remaps entity UIDs; and checks retained
-public RT values and relationships. It does **not** convert the file to standard
+UID in the plan and file meta; remaps entity UIDs; and checks retained public RT
+values and relationships. Class references are preserved except for the specific
+correction described below. It does **not** convert the file to standard
 RT Plan Storage. A viewer that does not support the original private class may
 still refuse the result. Plans without the required public beams/control points,
 or with inconsistencies covered by these selected checks, fail. Passing these
 checks does not establish that all inputs for dose calculation are present.
+
+Version 0.1.7 can correct one type of inconsistent reference when this mode is enabled:
+a reference that names standard **RT Plan Storage** but points by instance UID to
+the supported private ViewRay plan in the selected input. The target must be
+unambiguous and belong to the same patient group. Only the reference's class UID
+is changed to match the actual target, with a `VIEWRAY_REFERENCE_CLASS_REPAIR`
+warning. The plan's own class and the instance-UID mapping policy are unchanged, and
+source files are never modified. Missing targets, conflicting duplicates,
+cross-patient references, reverse mismatches and other class pairs are not
+corrected. Remaining class mismatches fail during scanning, with neutral file
+numbers and tag locations to help local investigation.
 
 Every accepted plan produces a warning about removal of proprietary fields.
 This is not verified full ViewRay support: the vendor class specification and
@@ -319,7 +332,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.6`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.7`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

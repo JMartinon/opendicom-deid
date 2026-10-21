@@ -13,6 +13,7 @@ from pydicom.uid import UID
 from .inspection import capture_snapshot
 from .models import FileRecord, Finding, Progress, ProgressCallback, ScanResult, check_cancel
 from .reader import ReadError, file_digest, looks_like_dicom, read_dicom
+from .reference_classes import reference_class_findings, reference_class_repairs
 from .sop_classes import (
     KNOWN_MODALITIES,
     SUPPORTED_SOP_CLASSES,
@@ -218,6 +219,10 @@ def scan_directory(
         if progress:
             progress(Progress("Scanning", index, len(paths)))
     result.modalities = dict(Counter(record.modality for record in result.files))
+    repairs = reference_class_repairs(result.files, enabled=allow_viewray_public_plan)
+    result.findings.extend(reference_class_findings(
+        [(record.file_id, record.snapshot) for record in result.files], repairs,
+    ))
     if result.skipped:
         result.findings.append(Finding(
             "WARNING", "NON_DICOM_SKIPPED", f"{result.skipped} unrecognized non-DICOM files were excluded."

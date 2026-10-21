@@ -26,6 +26,7 @@ from .models import (
 )
 from .policy import PolicyError, scrub_metadata
 from .reader import ReadError, file_digest, read_dicom
+from .reference_classes import apply_reference_class_repairs, reference_class_repairs
 from .report import Report
 from .scanner import _paths, scan_directory
 from .uid_mapper import UIDMapper
@@ -113,6 +114,7 @@ def process_batch(
         report.findings.extend(scan.findings)
         if not scan.ok:
             return report
+        class_repairs = reference_class_repairs(scan.files, enabled=options.allow_viewray_public_plan)
         uid_map = UIDMapper(
             value for record in scan.files
             for values in record.snapshot.entity_uids.values() for value in values
@@ -166,6 +168,7 @@ def process_batch(
                 return report
             pseudonym = pseudonyms[record.patient_key]
             offset = offsets[record.patient_key]
+            apply_reference_class_repairs(ds, class_repairs.get(record.file_id, {}))
             scrub_metadata(
                 ds, pseudonym=pseudonym, uid_mapping=uid_map,
                 date_mode=options.date_mode, date_offset_days=offset,

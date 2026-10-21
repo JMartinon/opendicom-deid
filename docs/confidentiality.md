@@ -27,7 +27,7 @@ code is written.
 | --- | --- |
 | Patient name and patient ID | Replaced by a batch-consistent pseudonym, including occurrences inside retained sequences. |
 | Entity UIDs | A batch mapping is applied at all nesting depths, including external references. Unsupported UID meanings fail processing. |
-| Technical UIDs | Explicitly recognized class, syntax, and other technical identifiers are preserved. |
+| Technical UIDs | Explicitly recognized class, syntax, and other technical identifiers are preserved, except for the narrowly scoped ViewRay reference-class correction described below. |
 | Private attributes | Removed, including private creators, before value conversion whenever possible. There is no private-tag retention option. |
 | Selected equipment and material text | `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`, `TreatmentMachineName`, `FluenceModeID` and `MaterialID` are retained unless they match known identifiers from the batch. Matches become `ANONYMIZED` and produce a value-free warning. |
 | Beam names | User-defined names are replaced by neutral labels such as `BEAM-1`, based on the unchanged beam number. Original beam labels are not retained. |
@@ -72,6 +72,33 @@ data.
 This distinction matters because [DICOM PS3.2 Section 7.3](https://dicom.nema.org/Medical/dicom/current/output/chtml/part02/sect_7.3.html)
 allows specialized SOP classes to require private attributes. A class UID alone
 does not establish that deleting them leaves a complete treatment object.
+
+## ViewRay reference-class correction
+
+Since version 0.1.7, the ViewRay research export option permits one type of
+reference correction. A standard `RTPlanStorage` `ReferencedSOPClassUID` is changed to the
+supported private ViewRay class only when its single `ReferencedSOPInstanceUID`
+resolves unambiguously to that private RTPLAN in the selected batch and the
+source and target have the same patient grouping key. The target plan's own
+class UID is never rewritten. Instance UIDs and references still receive the
+usual consistent anonymization mapping.
+
+The correction changes only the eligible reference-class field at its exact
+sequence location. It does not guess from the vendor name, a UID prefix, or the
+modality alone. Missing targets, reverse or unrelated class pairs, conflicting
+duplicates and cross-patient references are not eligible. The scanner reports
+remaining class mismatches before transformation. Findings identify neutral
+source/target file numbers, numeric tag paths and recognized class names;
+original entity UIDs, paths and unknown class values are omitted.
+
+Each correction produces a `VIEWRAY_REFERENCE_CLASS_REPAIR` warning. The
+validator independently recomputes the expected corrections from the original
+sources, then checks the saved output at those locations. Other class changes
+remain failures. The input files are unchanged. This follows the distinction in
+the [DICOM SOP Instance Reference Macro](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_10.8.html)
+between the referenced object's class and its instance identity; it does not
+assert equivalence between standard and private plan classes. Privacy and
+clinical-completeness limitations remain unchanged.
 
 ## Machine and beam text
 

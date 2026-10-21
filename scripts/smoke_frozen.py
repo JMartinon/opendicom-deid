@@ -15,6 +15,7 @@ from pydicom.uid import (
     ExplicitVRLittleEndian,
     ImplicitVRLittleEndian,
     RTDoseStorage,
+    RTPlanStorage,
     RTStructureSetStorage,
     generate_uid,
 )
@@ -65,7 +66,9 @@ def main() -> None:
                     ds.DoseGridScaling = 0.001
                     ds.DoseUnits, ds.DoseType, ds.DoseSummationType = "GY", "PHYSICAL", "PLAN"
                     reference = Dataset()
-                    reference.ReferencedSOPClassUID = instances[2].SOPClassUID
+                    # Reproduce a standard-plan class label pointing by exact
+                    # instance UID at the selected ViewRay private plan.
+                    reference.ReferencedSOPClassUID = RTPlanStorage
                     reference.ReferencedSOPInstanceUID = instances[2].SOPInstanceUID
                     ds.ReferencedRTPlanSequence = [reference]
             elif modality == "RTSTRUCT":
@@ -139,6 +142,7 @@ def main() -> None:
         assert result["status"] == "COMPLETED" and result["output_count"] == 4
         assert not any(finding["severity"] == "FAIL" for finding in result["findings"])
         assert any(f["code"] == "VIEWRAY_PRIVATE_PLAN" for f in result["findings"])
+        assert any(f["code"] == "VIEWRAY_REFERENCE_CLASS_REPAIR" for f in result["findings"])
         assert any(f["code"] == "EQUIPMENT_TEXT_REDACTED" for f in result["findings"])
         paths = list(output.rglob("*.dcm"))
         assert len(paths) == 4
@@ -156,6 +160,7 @@ def main() -> None:
         reference = saved["RTDOSE"].ReferencedRTPlanSequence[0]
         assert reference.ReferencedSOPInstanceUID == saved["RTPLAN"].SOPInstanceUID
         assert reference.ReferencedSOPClassUID == VIEWRAY_RT_PLAN_STORAGE
+        assert instances[3].ReferencedRTPlanSequence[0].ReferencedSOPClassUID == RTPlanStorage
         assert saved["RTPLAN"].SOPClassUID == VIEWRAY_RT_PLAN_STORAGE
         assert saved["RTPLAN"].file_meta.MediaStorageSOPClassUID == VIEWRAY_RT_PLAN_STORAGE
         assert saved["RTPLAN"].file_meta.TransferSyntaxUID == ImplicitVRLittleEndian

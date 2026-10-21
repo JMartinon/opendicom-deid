@@ -30,6 +30,7 @@ from .models import (
 )
 from .policy import metadata_issues
 from .reader import looks_like_dicom, read_dicom
+from .reference_classes import reference_class_findings, reference_class_repairs
 from .report import Report
 from .sop_classes import (
     SUPPORTED_SOP_CLASSES,
@@ -150,7 +151,9 @@ def _metadata_findings(
     return findings
 
 
-def _graph_findings(snapshots: list[Snapshot], *, standalone: bool = False) -> list[Finding]:
+def _graph_findings(
+    snapshots: list[Snapshot], *, standalone: bool = False, labels: list[str] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
     instances: dict[str, list[Snapshot]] = defaultdict(list)
     series_studies: dict[str, set[str]] = defaultdict(set)
@@ -181,22 +184,8 @@ def _graph_findings(snapshots: list[Snapshot], *, standalone: bool = False) -> l
         findings.append(_finding(
             "FAIL", "PATIENT_PSEUDONYM", "Patient pseudonyms are inconsistent across files."
         ))
-    reference_class_mismatch = False
-    for snap in snapshots:
-        for path, references in snap.references.items():
-            if not path.endswith("/00081155"):
-                continue
-            reference_classes = snap.technical_uids.get(path[:-8] + "00081150", ())
-            for reference in references:
-                if reference in instances and reference_classes and any(
-                    target.sop_class_uid not in reference_classes for target in instances[reference]
-                ):
-                    reference_class_mismatch = True
-    if reference_class_mismatch:
-        findings.append(_finding(
-            "FAIL", "REFERENCE_CLASS_MISMATCH",
-            "An instance reference names a different SOP class than its target."
-        ))
+    labels = labels if labels is not None else [f"File {i:06d}" for i in range(1, len(snapshots) + 1)]
+    findings.extend(reference_class_findings(list(zip(labels, snapshots, strict=True))))
     if standalone:
         unresolved = sum(
             reference not in instances
@@ -227,6 +216,7 @@ def validate_batch(
     findings: list[Finding] = []
     snapshots: list[Snapshot] = []
     identifiers = frozenset(token for record in scan.files for token in record.snapshot.identifiers)
+    class_repairs = reference_class_repairs(scan.files, enabled=options.allow_viewray_public_plan)
     equipment_redacted = False
     source_instances = {record.snapshot.sop_uid for record in scan.files}
     available_output_instances: set[str] = set()
@@ -315,7 +305,11 @@ def validate_batch(
                 "FAIL", "UID_INTEGRITY", "An entity UID or nested reference was not mapped consistently.",
                 output.source.file_id,
             ))
-        if snapshot.technical_uids != source.technical_uids:
+        expected_technical = dict(source.technical_uids)
+        expected_technical.update({
+            path: (sop_class,) for path, sop_class in class_repairs.get(output.source.file_id, {}).items()
+        })
+        if snapshot.technical_uids != expected_technical:
             findings.append(_finding(
                 "FAIL", "TECHNICAL_UID_CHANGED", "A technical DICOM identifier changed unexpectedly.",
                 output.source.file_id,
@@ -392,7 +386,9 @@ def validate_batch(
         findings.append(_finding(
             "FAIL", "BROKEN_REFERENCES", "An instance reference that resolved in the input is now broken."
         ))
-    findings.extend(_graph_findings(snapshots))
+    findings.extend(_graph_findings(
+        snapshots, labels=[output.source.file_id for output, _ in read_pairs],
+    ))
     failures = {finding.code for finding in findings if finding.severity == "FAIL"}
     if not failures.intersection({
         "OUTPUT_UNREADABLE", "FILE_COUNT", "OUTPUT_PATH_COLLISION", "NO_DICOM_FILES",
@@ -421,6 +417,7 @@ def validate_batch(
         "RESIDUAL_FILE_METADATA", "UNSUPPORTED_OBJECT", "MODALITY",
         "INVALID_STRUCTURE", "VIEWRAY_PLAN_REVIEW_REQUIRED",
         "PATIENT_PSEUDONYM", "DEIDENTIFICATION_MARKERS", "TECHNICAL_UID_CHANGED",
+        "REFERENCE_CLASS_MISMATCH",
         "TRANSFER_SYNTAX_CHANGED", "DATE_POLICY",
         "EQUIPMENT_TEXT_CHANGED",
         "OUTPUT_UNREADABLE", "FILE_COUNT",
@@ -439,6 +436,7 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
         return report
     files = sorted(directory.rglob("*") if recursive else directory.iterdir())
     snapshots: list[Snapshot] = []
+    labels: list[str] = []
     for candidate in files:
         if candidate.is_symlink():
             report.findings.append(_finding(
@@ -463,6 +461,7 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
         modality = modality_label(ds)
         report.modalities[modality] = report.modalities.get(modality, 0) + 1
         snapshots.append(snapshot)
+        labels.append(file_id)
         report.findings.extend(_metadata_findings(ds, snapshot, file_id))
     if not report.input_count:
         report.findings.append(_finding("FAIL", "NO_DICOM_FILES", "No readable DICOM objects were found."))
@@ -472,7 +471,7 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
             "Selected equipment text remains. Without the originals, known-identifier screening "
             "cannot be checked. Review custom equipment labels before sharing."
         ))
-    graph = _graph_findings(snapshots, standalone=True)
+    graph = _graph_findings(snapshots, standalone=True, labels=labels)
     if any(f.severity == "FAIL" for f in report.findings + graph):
         graph = [f for f in graph if f.severity != "PASS"]
     report.findings.extend(graph)

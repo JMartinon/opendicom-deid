@@ -60,11 +60,13 @@ remain necessary to define a policy that preserves reconstruction inputs.
 
 Version 0.1.4 recognizes only this exact private class and offers an explicit,
 default-off **ViewRay public-data research export** option. It keeps the class
-UID and class references unchanged. Existing private-tag removal still applies,
+UID unchanged; class references are preserved except for the narrowly scoped
+correction added in version 0.1.7 below. Existing private-tag removal still applies,
 so proprietary treatment information may be lost; complete MRIdian plan
 preservation and treatment-system re-import are unsupported. Both batch reports
 and standalone validation carry this limitation. Recognition is not full vendor
-conformance, and no class rewrite or broad vendor-prefix exception is used.
+conformance, and no rewrite of the plan's own class or broad vendor-prefix
+exception is used.
 
 The public-data guard requires nonempty beams with unique positive beam numbers,
 at least two control points per beam, matching counts and sequential indexes,
@@ -97,6 +99,39 @@ control points, and deliberately changed output. Numeric RT reference values
 and retained plan/reference sequence cardinalities are fingerprinted as well.
 This establishes behavior on synthetic fixtures, not acceptance of the user's
 actual plan or the completeness of its exported public data.
+
+### ViewRay reference-class mismatch handling
+
+A version 0.1.6 report showed `REFERENCE_CLASS_MISMATCH`: a reference named a
+class different from its selected target's actual class. The report did not
+identify the class pair or reference location, so the specific cause in the
+user's original export has not been confirmed. No original dataset was used to
+develop or verify this correction.
+
+Version 0.1.7 checks reference classes during scanning and provides neutral file
+numbers, numeric sequence/tag locations and recognized class names for remaining
+mismatches. It does not expose source paths, entity UIDs or unknown raw class
+UIDs. A reference to an object outside the input remains an explicit missing
+reference warning; there is no target class to infer or repair in that case.
+
+With the ViewRay research option enabled, one narrowly defined mismatch can be
+corrected: standard `RTPlanStorage` in `ReferencedSOPClassUID` paired with a
+single instance reference that resolves to the exact supported private ViewRay
+RTPLAN in the same patient group. Resolution must be unambiguous. The class
+field is changed to the selected target's actual class and a
+`VIEWRAY_REFERENCE_CLASS_REPAIR` warning records the correction. Original files,
+the plan's own class and the entity-UID remapping policy remain unchanged. The
+[DICOM SOP Instance Reference Macro](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_10.8.html)
+defines these as separate class and instance attributes; the correction does not
+convert a private plan into a standard plan.
+
+Missing targets, reverse or unrelated class pairs, ambiguous conflicting
+duplicates and cross-patient references are not corrected. The validator
+recomputes expected corrections from the original sources and verifies the exact
+reference-class locations in the output. It continues to reject additional
+class changes, altered instance references and changes to the plan's own class.
+Passing these checks does not establish real ViewRay compatibility or complete
+inputs for independent dose reconstruction.
 
 ## Other automated checks
 
@@ -255,12 +290,15 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **327 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **349 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked. Forty equipment-text tests
 cover retained values, neutral beam labels, cross-file identifier matches,
-short identifiers, and deliberate output tampering. Local GUI smoke checks pass.
+short identifiers, and deliberate output tampering. Twenty-two reference-class
+tests cover the narrow correction, identity scope, duplicate targets, safe
+diagnostics, unchanged source content, and output tampering. Local GUI smoke
+checks pass.
 
 Local validation is performed on Apple Silicon macOS. Native GitHub Actions
 workflows provide separate Windows x86-64, macOS ARM64/Intel, and Ubuntu x86-64
