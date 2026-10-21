@@ -20,10 +20,18 @@ from pydicom.dataset import Dataset
 from pydicom.multival import MultiValue
 from pydicom.tag import BaseTag, Tag
 
+from .equipment_text import (
+    EQUIPMENT_TEXT_KEYWORDS,
+    IdentifierToken,
+    cleaned_equipment_values,
+    identifier_tokens,
+    neutral_beam_name,
+    text_values,
+)
 from .uid_mapper import uid_kind
 
 DateMode = Literal["remove", "shift"]
-POLICY_NAME = "OpenDICOM De-ID metadata policy v1"
+POLICY_NAME = "OpenDICOM De-ID metadata policy v2"
 RULE_BASELINE = "Kitware dicom-anonymizer 2.1.0 / DICOM 2024b tables"
 
 # Code meanings and units carry clinical semantics. They are an explicit review
@@ -188,6 +196,7 @@ def scrub_metadata(
     uid_mapping: Mapping[str, str],
     date_mode: DateMode = "remove",
     date_offset_days: int = 0,
+    known_identifiers: frozenset[IdentifierToken] = frozenset(),
 ) -> None:
     """Mutate metadata recursively without touching pixel or geometry values.
 
@@ -203,6 +212,9 @@ def scrub_metadata(
         raise PolicyError("Date shifting requires a nonzero whole-day offset.")
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", pseudonym):
         raise PolicyError("The patient pseudonym is not a valid neutral identifier.")
+    # Direct callers receive the same protection for this dataset; batch callers
+    # additionally supply all original identifiers from the first pass.
+    identifiers = known_identifiers | identifier_tokens(dataset)
 
     def scrub(item: Dataset) -> None:
         for tag in list(item.keys()):
@@ -255,6 +267,12 @@ def scrub_metadata(
                 # A whole-day shift preserves the date/time offset relationship.
                 if element.value and not _valid_timezone(str(element.value)):
                     raise PolicyError("The timezone offset is malformed.")
+                continue
+            if keyword in EQUIPMENT_TEXT_KEYWORDS:
+                _replace_values(element, list(cleaned_equipment_values(text_values(element), identifiers)))
+                continue
+            if keyword == "BeamName":
+                element.value = neutral_beam_name(item) if element.value else ""
                 continue
             if rule == "X_TAGS":
                 del item[tag]
@@ -345,6 +363,13 @@ def metadata_issues(
                 if element.value and not _valid_timezone(str(element.value)):
                     issues.add("invalid_dates")
                 continue
+            elif keyword in EQUIPMENT_TEXT_KEYWORDS:
+                # Batch validation compares these values with the original
+                # screened values. A standalone check cannot infer old identities.
+                continue
+            elif keyword == "BeamName":
+                if text_values(element) not in {(neutral_beam_name(item),), ("",)}:
+                    issues.add("identifying_text")
             elif rule_for_tag(tag) == "X_TAGS":
                 issues.add("identifying_attributes")
             elif element.VR in TEXT_VRS and keyword not in PRESERVED_TEXT_KEYWORDS:

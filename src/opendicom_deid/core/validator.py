@@ -17,6 +17,7 @@ from typing import Literal
 from pydicom.dataset import Dataset
 from pydicom.uid import UID
 
+from .equipment_text import cleaned_equipment_values
 from .inspection import Snapshot, capture_snapshot, walk_elements
 from .models import (
     ExpectedOutput,
@@ -225,6 +226,8 @@ def validate_batch(
     """Verify saved output against original snapshots and the sealed batch UID map."""
     findings: list[Finding] = []
     snapshots: list[Snapshot] = []
+    identifiers = frozenset(token for record in scan.files for token in record.snapshot.identifiers)
+    equipment_redacted = False
     source_instances = {record.snapshot.sop_uid for record in scan.files}
     available_output_instances: set[str] = set()
     read_pairs: list[tuple[ExpectedOutput, Snapshot]] = []
@@ -285,6 +288,17 @@ def validate_batch(
             ds, snapshot, output.source.file_id, pseudonym=output.pseudonym, options=options
         ))
         source = output.source.snapshot
+        expected_equipment = {
+            path: cleaned_equipment_values(values, identifiers)
+            for path, values in source.equipment_text.items()
+        }
+        equipment_redacted |= expected_equipment != source.equipment_text
+        if snapshot.equipment_text != expected_equipment or snapshot.beam_names != source.neutral_beam_names:
+            findings.append(_finding(
+                "FAIL", "EQUIPMENT_TEXT_CHANGED",
+                "Equipment text or neutral beam labels do not match the expected privacy transformation.",
+                output.source.file_id,
+            ))
         try:
             expected = {
                 path: tuple(uid_mapping[uid] for uid in values)
@@ -341,6 +355,19 @@ def validate_batch(
             ))
         if progress:
             progress(Progress("Validating", index, len(outputs)))
+    if any(any(values) for snap in snapshots for values in snap.equipment_text.values()):
+        findings.append(_finding(
+            "WARNING", "EQUIPMENT_TEXT_REVIEW",
+            "Selected equipment text was retained. Review locally chosen machine, model, "
+            "software, fluence and material labels before sharing; known-identifier screening "
+            "does not establish that custom text is anonymous."
+        ))
+    if equipment_redacted:
+        findings.append(_finding(
+            "WARNING", "EQUIPMENT_TEXT_REDACTED",
+            "Equipment text matching known source identifiers was neutralized. "
+            "Check affected equipment mappings locally before downstream analysis."
+        ))
     preexisting_missing = 0
     new_missing = 0
     for output, snapshot in read_pairs:
@@ -382,10 +409,12 @@ def validate_batch(
             "PASS", "REFERENCE_GRAPH", "All instance relationships present in the input were preserved."
         ))
     if not failures.intersection({
-        "CLINICAL_DATA_CHANGED", "OUTPUT_UNREADABLE", "FILE_COUNT", "NO_DICOM_FILES",
+        "CLINICAL_DATA_CHANGED", "EQUIPMENT_TEXT_CHANGED", "OUTPUT_UNREADABLE", "FILE_COUNT", "NO_DICOM_FILES",
     }):
         findings.append(_finding(
-            "PASS", "CLINICAL_PRESERVATION", "Pixels and selected geometry and clinical parameters are unchanged."
+            "PASS", "CLINICAL_PRESERVATION",
+            "Pixels and selected clinical parameters are unchanged; equipment text and neutral "
+            "beam labels match the expected privacy transformation."
         ))
     if not failures.intersection({
         "FILE_META_MISMATCH", "PRIVATE_TAGS", "RESIDUAL_METADATA", "INVALID_UID",
@@ -393,6 +422,7 @@ def validate_batch(
         "INVALID_STRUCTURE", "VIEWRAY_PLAN_REVIEW_REQUIRED",
         "PATIENT_PSEUDONYM", "DEIDENTIFICATION_MARKERS", "TECHNICAL_UID_CHANGED",
         "TRANSFER_SYNTAX_CHANGED", "DATE_POLICY",
+        "EQUIPMENT_TEXT_CHANGED",
         "OUTPUT_UNREADABLE", "FILE_COUNT",
         "NO_DICOM_FILES",
     }):
@@ -436,6 +466,12 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
         report.findings.extend(_metadata_findings(ds, snapshot, file_id))
     if not report.input_count:
         report.findings.append(_finding("FAIL", "NO_DICOM_FILES", "No readable DICOM objects were found."))
+    if any(any(values) for snap in snapshots for values in snap.equipment_text.values()):
+        report.findings.append(_finding(
+            "WARNING", "EQUIPMENT_TEXT_REVIEW",
+            "Selected equipment text remains. Without the originals, known-identifier screening "
+            "cannot be checked. Review custom equipment labels before sharing."
+        ))
     graph = _graph_findings(snapshots, standalone=True)
     if any(f.severity == "FAIL" for f in report.findings + graph):
         graph = [f for f in graph if f.severity != "PASS"]

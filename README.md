@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.5 is an initial validation release.** Automated checks do not prove
+**Version 0.1.6 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -21,6 +21,9 @@ sharing it. No claim of a fully verified DICOM confidentiality profile is made.
   pseudonym consistently across studies.
 - Removes private metadata by default; offers date removal or consistent date
   shifting and preserves nested source folders with neutral names by default.
+- Preserves selected manufacturer, model, software, machine, material and
+  fluence-mode text after screening it against known identifiers in the batch.
+  Beam names become distinct neutral labels based on their beam numbers.
 - Compares input/output references, pixel bytes, geometry, and selected RT
   parameters. Pre-existing external references produce explicit findings.
 - Rejects conflicting instance duplicates and unsafe input/output locations.
@@ -60,6 +63,26 @@ their generated patient pseudonyms. Empty folders and non-DICOM files are not co
 Turn off **Preserve patient folders and subfolders** in Advanced options only if
 you want a flat output directory (CLI: `--organization flat`).
 
+### Machine and beam information
+
+Version 0.1.6 retains these six public text fields by default, including in
+retained sequences: `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
+`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. It screens them against
+known patient names, identifiers and entity/reference UIDs across the complete
+batch. A matching value becomes `ANONYMIZED` and produces a warning without
+revealing the original value.
+The bounded screening accounts for differences in case, punctuation and accents;
+it cannot recognize every possible identifier, and retained text still needs
+local review.
+
+Original beam names are user-defined and can include patient information. They
+become neutral labels such as `BEAM-1` and `BEAM-2`, using the unchanged beam
+numbers. Beam/control-point numbers, numeric treatment parameters and references
+retain their existing preservation checks. Serial numbers, institution details,
+patient identifiers, descriptions and plan labels remain scrubbed. These changes
+do not establish completeness for dose reconstruction; see the
+[text policy and its limits](docs/confidentiality.md#machine-and-beam-text).
+
 ### ViewRay private RT plans
 
 To check an original plan for potential identifying metadata without changing
@@ -72,10 +95,11 @@ mode. In version 0.1.4 or newer, open **Advanced options**, enable **ViewRay
 public-data research export**, then run **De-identify** on the complete input
 tree. This setting is off by default because proprietary treatment fields are
 removed, and a full MRIdian plan or treatment-system re-import is unsupported.
-**This mode is not validated for independent dose reconstruction.** The metadata
-policy also replaces public text such as machine and material identifiers that
-an external calculation workflow may need. Keep the original export in its
-authorized clinical storage if future reconstruction is required.
+**This mode is not validated for independent dose reconstruction.** The selected
+public machine, model, material and fluence-mode text described above is retained
+unless identifier screening requires its replacement. Other free text and any
+private attributes remain subject to removal or scrubbing. Keep the original
+export in its authorized clinical storage if future reconstruction is required.
 
 The mode requires public beam/control-point data with coherent numbers, counts,
 indexes, geometry, and meterset weights. It preserves the original private class
@@ -295,7 +319,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.5`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.6`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

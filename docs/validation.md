@@ -77,14 +77,15 @@ the required public content and the inconsistencies listed above. They do not
 establish completeness: for example, acceptance does not require fraction-group
 beam metersets or a complete MLC description.
 
-Independent dose reconstruction is not validated. In addition to removing all
-private attributes, the metadata policy replaces public text such as
-`TreatmentMachineName`, `MaterialID`, and `FluenceModeID`; an external calculation
-workflow may use these to select machine, material, or fluence models. The
-selected clinical fingerprints do not establish preservation of those meanings.
-Supporting reconstruction requires a version-specific vendor attribute
-specification, defined inputs for the intended calculation workflow, and
-validation that the relevant clinical information survives de-identification.
+Independent dose reconstruction is not validated. Since version 0.1.6, the
+metadata policy retains selected public machine, model, software, material and
+fluence-mode text unless it matches known identifiers in the batch. Saved output
+is checked against the text expected after that screening. Other text still
+undergoes scrubbing, and all private attributes are removed. Supporting
+reconstruction requires defined inputs for the intended calculation workflow,
+appropriate vendor documentation, and validation that the relevant clinical
+information survives de-identification. Selected preservation checks alone do
+not establish completeness.
 
 `tests/test_viewray_plan.py` builds synthetic linked CT/MR/RTSTRUCT/ViewRay-plan/
 RTDOSE/RTIMAGE objects using Implicit VR Little Endian. It checks unchanged
@@ -98,6 +99,31 @@ This establishes behavior on synthetic fixtures, not acceptance of the user's
 actual plan or the completeness of its exported public data.
 
 ## Other automated checks
+
+### Equipment text and neutral beam labels
+
+Version 0.1.6 preserves six explicitly selected public fields: `Manufacturer`,
+`ManufacturerModelName`, `SoftwareVersions`, `TreatmentMachineName`,
+`FluenceModeID`, and `MaterialID`. Known names, identifiers and entity/reference
+UIDs from the whole batch are screened against those values before transformation,
+including clinical-trial subject and subject-reading identifiers. Case,
+punctuation and diacritic differences are normalized. Longer tokens match within
+text; short identifiers match delimited components, except that short numeric
+`StudyID` values match only the whole field to avoid software-version collisions.
+Matches become `ANONYMIZED` and produce fixed messages without revealing source values.
+This is a bounded screen, not a privacy clearance for retained free text.
+
+Original `BeamName` values are replaced by labels based on the unchanged beam
+numbers, such as `BEAM-1`. This preserves distinct beam labels without trusting
+user-defined names. Numeric beam and control-point values, MLC geometry, pixels
+and the UID reference graph remain covered by their existing checks.
+
+Source-to-output verification compares expected retained or scrubbed equipment
+text and neutral beam labels at their sequence locations. This is additional
+preservation evidence; it does not validate all downstream treatment semantics.
+The field selection and privacy limits are documented in the
+[machine and beam text policy](confidentiality.md#machine-and-beam-text), with
+links to the DICOM RT Beams module and Retain Device Identity Option.
 
 ### Read-only identifier screening
 
@@ -207,7 +233,8 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 - Readability means strict metadata parsing, public value-representation checks,
   and selected structural checks. It is not exhaustive DICOM IOD conformance.
 - Clinical preservation compares selected numeric metadata and byte fingerprints
-  at their sequence paths. It does not verify treatment-plan clinical correctness.
+  at their sequence paths, plus the expected screened equipment text and neutral
+  beam labels. It does not verify treatment-plan clinical correctness.
 - Byte-identical copies of an instance share their replacement UID. Non-identical
   files with the same original instance UID are rejected conservatively, even
   if the difference might only be a harmless alternate representation.
@@ -228,10 +255,12 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **247 tests passed** locally on both Python 3.12.14 and
+On October 21, 2026, all **327 tests passed** locally on both Python 3.12.14 and
 Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
-an isolated process with socket connections blocked.
+an isolated process with socket connections blocked. Forty equipment-text tests
+cover retained values, neutral beam labels, cross-file identifier matches,
+short identifiers, and deliberate output tampering. Local GUI smoke checks pass.
 
 Local validation is performed on Apple Silicon macOS. Native GitHub Actions
 workflows provide separate Windows x86-64, macOS ARM64/Intel, and Ubuntu x86-64

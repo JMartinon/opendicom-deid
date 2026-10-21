@@ -117,6 +117,9 @@ def process_batch(
             value for record in scan.files
             for values in record.snapshot.entity_uids.values() for value in values
         )
+        identifiers = frozenset(
+            token for record in scan.files for token in record.snapshot.identifiers
+        )
         identities = dict.fromkeys(record.patient_key for record in scan.files)
         pseudonyms: dict[tuple[str, ...], str] = {}
         for identity in identities:
@@ -166,6 +169,7 @@ def process_batch(
             scrub_metadata(
                 ds, pseudonym=pseudonym, uid_mapping=uid_map,
                 date_mode=options.date_mode, date_offset_days=offset,
+                known_identifiers=identifiers,
             )
             _reset_file_meta(ds)
             parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")

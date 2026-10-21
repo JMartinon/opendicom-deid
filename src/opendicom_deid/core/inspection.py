@@ -16,6 +16,7 @@ from pydicom.dataelem import DataElement
 from pydicom.dataset import Dataset
 from pydicom.multival import MultiValue
 
+from .equipment_text import IdentifierToken, capture_equipment_text, identifier_tokens
 from .sop_classes import VIEWRAY_RT_PLAN_STORAGE
 
 
@@ -36,6 +37,10 @@ class Snapshot:
     private_count: int
     dates: dict[str, tuple[str, tuple[str, ...]]]
     transfer_syntax_uid: str
+    equipment_text: dict[str, tuple[str, ...]]
+    beam_names: dict[str, tuple[str, ...]]
+    neutral_beam_names: dict[str, tuple[str, ...]]
+    identifiers: frozenset[IdentifierToken]
 
 
 def walk_elements(ds: Dataset, prefix: str = "") -> Iterator[tuple[str, DataElement]]:
@@ -140,6 +145,7 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
             )
         ):
             clinical[path] = normalized
+    equipment, beams, neutral_beams = capture_equipment_text(ds)
     return Snapshot(
         sop_uid=str(ds.get("SOPInstanceUID", "")),
         sop_class_uid=str(ds.get("SOPClassUID", "")),
@@ -156,4 +162,8 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
         private_count=private_count,
         dates=dates,
         transfer_syntax_uid=str(getattr(ds, "file_meta", {}).get("TransferSyntaxUID", "")),
+        equipment_text=equipment,
+        beam_names=beams,
+        neutral_beam_names=neutral_beams,
+        identifiers=identifier_tokens(ds),
     )

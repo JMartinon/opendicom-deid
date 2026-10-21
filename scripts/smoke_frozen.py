@@ -52,6 +52,9 @@ def main() -> None:
             ds.StudyInstanceUID, ds.SeriesInstanceUID = study, generate_uid()
             ds.FrameOfReferenceUID = frame
             ds.PatientID, ds.PatientName = "SYNTHETIC-ID", "Synthetic^Only"
+            ds.Manufacturer = "Example Devices"
+            ds.ManufacturerModelName = "Research Linac"
+            ds.SoftwareVersions = ["5.5.4.14", "2.0"]
             ds.Modality = modality
             if modality in {"CT", "RTDOSE"}:
                 ds.Rows, ds.Columns, ds.SamplesPerPixel = 1, 2, 1
@@ -76,12 +79,24 @@ def main() -> None:
                 ds.ROIContourSequence = [roi]
             else:
                 ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+                ds.TreatmentMachineName = "SYNTHETIC-ID"
                 reference = Dataset()
                 reference.ReferencedSOPClassUID = instances[1].SOPClassUID
                 reference.ReferencedSOPInstanceUID = instances[1].SOPInstanceUID
                 ds.ReferencedStructureSetSequence = [reference]
                 beam = Dataset()
                 beam.BeamNumber, beam.NumberOfControlPoints = 1, 2
+                beam.BeamName = "SYNTHETIC-ID"
+                beam.Manufacturer = "Example Devices"
+                beam.ManufacturerModelName = "Research Linac"
+                beam.TreatmentMachineName = "LINAC-A"
+                beam.DeviceSerialNumber = "IDENTIFYING-SERIAL"
+                mode = Dataset()
+                mode.FluenceMode, mode.FluenceModeID = "NON_STANDARD", "FFF"
+                beam.PrimaryFluenceModeSequence = [mode]
+                material = Dataset()
+                material.MaterialID = "WATER"
+                beam.CompensatorSequence = [material]
                 beam.BeamType, beam.RadiationType = "STATIC", "PHOTON"
                 beam.FinalCumulativeMetersetWeight = 1
                 points = []
@@ -124,6 +139,7 @@ def main() -> None:
         assert result["status"] == "COMPLETED" and result["output_count"] == 4
         assert not any(finding["severity"] == "FAIL" for finding in result["findings"])
         assert any(f["code"] == "VIEWRAY_PRIVATE_PLAN" for f in result["findings"])
+        assert any(f["code"] == "EQUIPMENT_TEXT_REDACTED" for f in result["findings"])
         paths = list(output.rglob("*.dcm"))
         assert len(paths) == 4
         assert len({path.parent.parent for path in paths}) == 1
@@ -143,13 +159,24 @@ def main() -> None:
         assert saved["RTPLAN"].SOPClassUID == VIEWRAY_RT_PLAN_STORAGE
         assert saved["RTPLAN"].file_meta.MediaStorageSOPClassUID == VIEWRAY_RT_PLAN_STORAGE
         assert saved["RTPLAN"].file_meta.TransferSyntaxUID == ImplicitVRLittleEndian
-        assert saved["RTPLAN"].BeamSequence == instances[2].BeamSequence
+        assert saved["RTPLAN"].TreatmentMachineName == "ANONYMIZED"
+        beam = saved["RTPLAN"].BeamSequence[0]
+        assert beam.BeamName == "BEAM-1" and beam.TreatmentMachineName == "LINAC-A"
+        assert beam.Manufacturer == "Example Devices" and beam.ManufacturerModelName == "Research Linac"
+        assert beam.get("DeviceSerialNumber", "") in {"", "ANONYMIZED"}
+        assert beam.PrimaryFluenceModeSequence[0].FluenceModeID == "FFF"
+        assert beam.CompensatorSequence[0].MaterialID == "WATER"
+        assert beam.ControlPointSequence == instances[2].BeamSequence[0].ControlPointSequence
+        assert all(ds.Manufacturer == "Example Devices" for ds in saved.values())
+        assert all(ds.ManufacturerModelName == "Research Linac" for ds in saved.values())
+        assert all(list(ds.SoftwareVersions) == ["5.5.4.14", "2.0"] for ds in saved.values())
         assert saved["RTDOSE"].PixelData == instances[3].PixelData
         assert all(not elem.tag.is_private for ds in saved.values() for elem in ds.iterall())
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
         assert len({str(ds.PatientID) for ds in saved.values()}) == 1
         assert saved["CT"].PatientID != "SYNTHETIC-ID"
-    print("Packaged executable: GUI startup, ViewRay opt-in, CT/RT references and pixels passed.")
+    print("Packaged executable: GUI startup, equipment text, neutral beam labels, "
+          "ViewRay opt-in, CT/RT references and pixels passed.")
 
 
 if __name__ == "__main__":
