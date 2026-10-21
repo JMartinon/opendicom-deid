@@ -3,16 +3,11 @@
 Run with a desktop session, or with xvfb-run on Linux CI. No DICOM is read.
 """
 
-from opendicom_deid.gui.app import App
+from opendicom_deid.gui.app import check_startup
 
 
 def main() -> None:
-    app = App()
-    app.update_idletasks()
-    app.toggle_advanced()
-    app.update()
-    app.toggle_advanced()
-    app.destroy()
+    check_startup()
 
 
 if __name__ == "__main__":

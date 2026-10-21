@@ -421,6 +421,18 @@ class App(tk.Tk):
             self.destroy()
 
 
+def check_startup() -> None:
+    """Exercise real Tk resources in source and frozen packaging checks."""
+    app = App()
+    try:
+        app.update_idletasks()
+        app.toggle_advanced()
+        app.update()
+        app.toggle_advanced()
+    finally:
+        app.destroy()
+
+
 def main() -> int:
     try:
         App().mainloop()

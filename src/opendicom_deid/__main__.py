@@ -6,6 +6,11 @@ import sys
 
 
 def main() -> int:
+    if sys.argv[1:] == ["--check-gui"]:
+        from .gui.app import check_startup
+
+        check_startup()
+        return 0
     if len(sys.argv) > 1:
         from .cli import main as cli_main
 

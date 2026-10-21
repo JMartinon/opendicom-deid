@@ -5,5 +5,11 @@ charset, example, or decoder test datasets. Ordinary Python imports remain
 available to PyInstaller's module analysis.
 """
 
+from PyInstaller.utils.hooks import collect_submodules
+
 datas = []
-hiddenimports = []
+# pydicom registers these wrapper modules with importlib during package import.
+# The optional native codecs themselves are not installed or bundled.
+hiddenimports = collect_submodules("pydicom.pixels.decoders") + collect_submodules(
+    "pydicom.pixels.encoders"
+)

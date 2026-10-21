@@ -47,6 +47,12 @@ jobs:
         if: runner.os != 'Linux'
         run: python scripts/smoke_gui.py
       - run: python scripts/build.py
+      - name: Check packaged GUI and process a synthetic RT chain (Windows / macOS)
+        if: runner.os != 'Linux'
+        run: python scripts/smoke_frozen.py
+      - name: Check packaged GUI and process a synthetic RT chain (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/smoke_frozen.py
       - name: Frozen application smoke check (macOS)
         if: runner.os == 'macOS'
         run: dist/OpenDICOM-De-ID.app/Contents/MacOS/OpenDICOM-De-ID --version

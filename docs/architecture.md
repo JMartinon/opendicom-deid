@@ -75,9 +75,15 @@ and counts. There is no reversible mapping export, persistent preference store,
 network client, telemetry, or remote log transport.
 
 Packaging explicitly excludes pydicom's documentation example loader and test
-data. A frozen runtime hook substitutes an empty `pydicom.examples` module
+datasets. Its `pydicom.data` Python module remains available because the pixel
+utilities import it. A frozen runtime hook substitutes an empty `pydicom.examples` module
 before package import, avoiding example lookup/download behavior without
 changing the installed dependency or its DICOM processing implementation.
+
+`--check-gui` is a developer packaging check that creates the real main window,
+opens and closes Advanced options, and exits. The native build workflow runs it
+inside the packaged executable, followed by processing a synthetic CT/RTSTRUCT
+chain through that same executable. Only then are build artifacts uploaded.
 
 No automated check guarantees complete de-identification. Pixel annotations,
 recognizable anatomy, and unusual content require local human review.

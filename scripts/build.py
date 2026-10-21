@@ -74,8 +74,6 @@ def main() -> None:
         # Never package the upstream example DICOMs or optional pixel codecs.
         # We preserve encoded pixel bytes, and do not download sample data.
         "--exclude-module",
-        "pydicom.data",
-        "--exclude-module",
         "pydicom.examples",
         "--exclude-module",
         "pytest",
