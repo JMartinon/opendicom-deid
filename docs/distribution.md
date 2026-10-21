@@ -7,6 +7,26 @@ Tcl/Tk are included in the resulting desktop artifact. See the
 
 ## Desktop packages
 
+End users can run the packaged application without installing Python or using
+build commands. Download a platform archive from a published version's
+[release assets](https://github.com/JMartinon/opendicom-deid/releases), when
+available, or from a successful
+[Native desktop builds run](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml).
+
+For Actions downloads, open the run's **Artifacts** section and choose the
+platform below. GitHub wraps the application archive and its SHA-256 file in an
+outer ZIP: extract that ZIP, then extract the application archive inside it.
+For Windows, choose **OpenDICOM-De-ID-Windows-x86_64** and double-click the
+extracted `OpenDICOM-De-ID.exe`. No PowerShell commands are needed.
+
+This repository is private. Sign in to GitHub with an account that has
+repository access to download its builds. Actions artifacts expire after **14
+days** under this project's retention setting. Published release assets do not
+use that retention period; they remain available until removed. Draft releases
+are for maintainer review and must be published before ordinary repository
+readers can download them. See
+[GitHub's artifact download instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
+
 | Target | CI runner | Package |
 | --- | --- | --- |
 | Windows x86-64 | `windows-2022` | ZIP containing a standalone `.exe` and external notices |
@@ -45,22 +65,63 @@ an older one. See [PyInstaller Linux portability](https://pyinstaller.org/en/sta
 
 ## Build and release
 
-From an activated virtual environment, run the matching wrapper:
+Build commands are for maintainers and developers. For macOS and Windows, run
+the matching wrapper from an activated virtual environment with Tcl/Tk:
 
 ```sh
 bash scripts/build_macos.sh
-bash scripts/build_linux.sh
 ```
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-Each wrapper installs `.[build,dev]`, runs pytest, and invokes
-`scripts/build.py`. A missing Tk installation or missing dependency license
-causes the build to fail. `dist/release/` receives the archive and SHA-256 file.
-Run `python scripts/smoke_gui.py` in a desktop session for a quick window test;
-Linux CI uses `xvfb-run -a`.
+The wrappers install `.[build,dev]`, run pytest, and invoke `scripts/build.py`.
+A missing dependency license causes the build to fail. `dist/release/` receives
+the archive and SHA-256 file. Linux interpreter selection and Tk checks are
+described below.
+
+### Linux build setup
+
+On Ubuntu 24.04 or newer, install Tcl/Tk support for the system interpreter and
+the virtual environment module, then select that interpreter explicitly:
+
+```sh
+sudo apt-get update
+sudo apt-get install python3-tk python3-venv
+PYTHON=/usr/bin/python3 bash scripts/build_linux.sh
+```
+
+The Linux wrapper checks Python 3.12+ and Tcl/Tk before dependency installation
+or tests. With no `PYTHON` override, it first checks `python3` on your path
+(including an active virtual environment), then tries `/usr/bin/python3` if
+necessary. It prints the selected interpreter. An explicit `PYTHON` selection
+does not fall back to another interpreter if its check fails. A compatible
+selected virtual environment is reused; otherwise the wrapper creates an
+isolated `.venv-build-linux` environment rather than installing into system
+Python. It does not install OS packages automatically.
+
+`python3-tk` matches your distribution's default Python. For example, installing
+it for Ubuntu's Python 3.12 does not supply `_tkinter` to a separately installed
+Python 3.14 or a virtual environment created from that Python. Use the system
+interpreter as above, install the matching Tk support from your custom Python
+provider, or rebuild that Python with Tcl/Tk support. Installing a package named
+`tkinter` with pip does not repair a missing standard-library `_tkinter` module.
+See [Python's optional Tkinter module documentation](https://docs.python.org/3/library/tkinter.html).
+
+Packaging and the Tk prerequisite check can run without a display. Opening the
+GUI or running a GUI smoke test requires a desktop session or a virtual display.
+Use the selected build environment's Python for `scripts/smoke_gui.py`; on a
+headless Ubuntu host, install `xvfb` and use, for example:
+
+```sh
+xvfb-run -a .venv-build-linux/bin/python scripts/smoke_gui.py
+xvfb-run -a .venv-build-linux/bin/python scripts/smoke_frozen.py
+```
+
+If the wrapper reused an existing virtual environment, use its Python instead.
+
+### Release preparation
 
 The packaging process copies the exact installed runtime dependency licenses
 and a version manifest, Python's license, the PyInstaller bootloader exception,

@@ -13,6 +13,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+from build_environment import require_build_environment
 from collect_licenses import collect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,14 +21,7 @@ APP_NAME = "OpenDICOM-De-ID"
 
 
 def main() -> None:
-    if sys.version_info < (3, 12):
-        raise SystemExit("Python 3.12 or newer is required.")
-    try:
-        import tkinter
-
-        tkinter.Tcl().eval("info patchlevel")
-    except (ImportError, RuntimeError) as exc:
-        raise SystemExit("A Python installation with Tcl/Tk is required to build the GUI.") from exc
+    require_build_environment()
     system = platform.system()
     if system not in {"Windows", "Darwin", "Linux"}:
         raise SystemExit("Supported build hosts: Windows, macOS, Linux.")

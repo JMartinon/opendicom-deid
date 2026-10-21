@@ -56,9 +56,23 @@ only in memory; this version offers no reversible identity export.
 
 ## Install a desktop build
 
-Native build scripts and GitHub Actions workflows are provided. They create
-packages containing Python, Tcl/Tk, the application, and required dependency
-notices. Users of a packaged build do not need Python or a terminal.
+Download a prebuilt application from
+[Native desktop builds](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml).
+Open a successful run, then choose your platform under **Artifacts**. These
+packages include Python, Tcl/Tk, the application, and dependency notices.
+**End users do not need Python, a terminal, or a local build.**
+
+For Windows, select **OpenDICOM-De-ID-Windows-x86_64**. Extract the downloaded
+GitHub artifact ZIP, then extract the application ZIP inside it. Double-click
+`OpenDICOM-De-ID.exe` in the extracted folder. The standalone executable includes
+its runtime; keep the accompanying license notices when distributing it.
+
+The repository is private, so GitHub downloads require signing in with an
+account that has repository access. Actions artifacts are retained for **14
+days**. For a published version, use the platform archive under **Assets** on the
+[Releases page](https://github.com/JMartinon/opendicom-deid/releases); release
+assets are not subject to Actions artifact expiry. A maintainer must publish a
+release before it is available there to other repository readers.
 
 | Platform | Distribution | Opening it |
 | --- | --- | --- |
@@ -81,7 +95,9 @@ downloaded artifact on a clean target machine before publishing a release.
 
 Use Python 3.12 or newer, with Tcl/Tk for the GUI. The CLI and tests can run
 without Tcl/Tk. Official Python installers for Windows and macOS include Tk;
-Linux distributions may require their `python3-tk` package.
+Linux distributions may require their `python3-tk` package. That package serves
+the distribution's system Python, and does not add Tk to an unrelated custom
+Python installation. See [Linux build setup](docs/distribution.md#linux-build-setup).
 
 ```sh
 python3 -m venv .venv
@@ -114,13 +130,27 @@ the in-memory batch comparison. Privacy review remains required in every case.
 
 ## Build native packages
 
-Run on the target operating system, in an activated virtual environment:
+Run on the target operating system. On Ubuntu 24.04 or newer, install the system
+Python GUI support once, then build with that interpreter:
+
+```sh
+sudo apt-get update
+sudo apt-get install python3-tk python3-venv
+PYTHON=/usr/bin/python3 bash scripts/build_linux.sh
+```
+
+The Linux wrapper checks Python/Tk before installing dependencies or running
+tests. By default it tries `python3`, then `/usr/bin/python3` if needed. An
+explicit `PYTHON` selection is used strictly. It reuses a compatible selected
+virtual environment, or creates an isolated `.venv-build-linux` environment.
+See [distribution instructions](docs/distribution.md#linux-build-setup) for
+custom Python installations and headless build hosts.
+
+For macOS and Windows, use an activated virtual environment with Tcl/Tk:
 
 ```sh
 # macOS
 bash scripts/build_macos.sh
-# Ubuntu
-bash scripts/build_linux.sh
 ```
 
 ```powershell
