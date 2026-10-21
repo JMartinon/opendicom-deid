@@ -18,11 +18,12 @@ class StorageInspectionDialog(tk.Toplevel):
         *,
         file_number: str,
         inspect_callback: Callable[[int, bool], None],
+        privacy_callback: Callable[[int], None],
         cancel_callback: Callable[[], None],
         close_callback: Callable[[], None],
     ) -> None:
         super().__init__(parent)
-        self.title("Inspect DICOM format")
+        self.title("Inspect DICOM file")
         self.configure(background=BACKGROUND)
         self.transient(parent)
         self.geometry("700x620")
@@ -30,6 +31,7 @@ class StorageInspectionDialog(tk.Toplevel):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         self._inspect_callback = inspect_callback
+        self._privacy_callback = privacy_callback
         self._cancel_callback = cancel_callback
         self._close_callback = close_callback
         self._busy = False
@@ -43,12 +45,13 @@ class StorageInspectionDialog(tk.Toplevel):
         body.grid(sticky="nsew")
         body.columnconfigure(0, weight=1)
         body.rowconfigure(5, weight=1)
-        ttk.Label(body, text="Inspect DICOM format", style="Title.TLabel").grid(sticky="w")
+        ttk.Label(body, text="Inspect DICOM file", style="Title.TLabel").grid(sticky="w")
         ttk.Label(
             body,
-            text="Reads technical format details from the selected input folder. "
+            text="Inspect the format or check for potential identifying data locally. "
             "No files are changed or uploaded. Keep the same folder and subfolder setting "
-            "as the failed run.",
+            "as the failed run. Identifier checks show field locations, never their values, "
+            "and cannot establish that a file is anonymous.",
             style="Muted.TLabel",
             wraplength=640,
         ).grid(row=1, sticky="ew", pady=(8, 16))
@@ -59,12 +62,16 @@ class StorageInspectionDialog(tk.Toplevel):
         self.number_entry = ttk.Entry(controls, textvariable=self.file_number, width=12)
         self.number_entry.grid(row=0, column=1, sticky="w")
         self.inspect_button = ttk.Button(
-            controls, text="Inspect", style="Primary.TButton", command=self.inspect
+            controls, text="Inspect format", command=self.inspect
         )
         self.inspect_button.grid(row=0, column=2, sticky="e")
+        self.privacy_button = ttk.Button(
+            controls, text="Check identifiers", style="Primary.TButton", command=self.inspect_privacy
+        )
+        self.privacy_button.grid(row=0, column=3, sticky="e", padx=(8, 0))
         self.private_check = ttk.Checkbutton(
             body,
-            text="Show vendor-specific storage class IDs",
+            text="Show vendor-specific storage class IDs in format details",
             variable=self.show_private_class_uids,
         )
         self.private_check.grid(row=3, sticky="w", pady=(12, 6))
@@ -81,7 +88,7 @@ class StorageInspectionDialog(tk.Toplevel):
         buttons.grid(row=6, sticky="ew", pady=(14, 0))
         buttons.columnconfigure(0, weight=1)
         self.copy_button = ttk.Button(
-            buttons, text="Copy technical details", command=self.copy_result, state="disabled"
+            buttons, text="Copy report", command=self.copy_result, state="disabled"
         )
         self.copy_button.grid(row=0, column=0, sticky="w")
         self.close_button = ttk.Button(buttons, text="Close", command=self.close)
@@ -103,23 +110,39 @@ class StorageInspectionDialog(tk.Toplevel):
         self._result_text = ""
         self._set_details("")
         self.copy_button.configure(state="disabled")
-        self.status.set("Click Inspect to read details for this selection.")
+        self.status.set("Choose Inspect format or Check identifiers for this selection.")
 
-    def inspect(self) -> None:
+    def _number(self) -> int | None:
         if self._busy:
-            return
+            return None
         number = self.file_number.get().strip()
         if not number.isascii() or not number.isdecimal() or len(number) > 12 or int(number) < 1:
             self.status.set("Enter a positive File number, for example 199 for File 000199.")
+            return None
+        return int(number)
+
+    def inspect(self) -> None:
+        number = self._number()
+        if number is None:
             return
         self._selection_changed()
         self.status.set("Reading format details locally…")
-        self._inspect_callback(int(number), self.show_private_class_uids.get())
+        self._inspect_callback(number, self.show_private_class_uids.get())
+
+    def inspect_privacy(self) -> None:
+        number = self._number()
+        if number is None:
+            return
+        self._selection_changed()
+        self.status.set("Checking for potential identifying fields locally…")
+        self._privacy_callback(number)
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
         state = "disabled" if busy else "normal"
-        for widget in (self.number_entry, self.private_check, self.inspect_button):
+        for widget in (
+            self.number_entry, self.private_check, self.inspect_button, self.privacy_button
+        ):
             widget.configure(state=state)
         self.copy_button.configure(state="normal" if self._result_text and not busy else "disabled")
         self.close_button.configure(text="Cancel" if busy else "Close")
@@ -130,6 +153,24 @@ class StorageInspectionDialog(tk.Toplevel):
             return
         self._result_text = json.dumps(result, indent=2)
         self._set_details(self._result_text)
+        if result.get("inspection_type") == "privacy":
+            complete = result.get("status") == "REVIEW_REQUIRED"
+            summary = result.get("summary", {})
+            found = any(summary.get(key, 0) for key in (
+                "direct_identifiers", "person_names", "private_identifier_matches"
+            ))
+            if complete:
+                self.status.set(
+                    "Potential identifying fields found. The report contains no field values. "
+                    "Private and unreadable content still requires review."
+                    if found else
+                    "No direct identifiers detected in inspected fields. This does not establish "
+                    "anonymity; review the remaining fields and inspection limits."
+                )
+            else:
+                self.status.set("Identifier inspection could not finish. No privacy clearance given.")
+            self.copy_button.configure(state="normal" if complete else "disabled")
+            return
         complete = bool(result.get("files")) and all(
             item.get("status") == "INSPECTED" for item in result["files"]
         )
@@ -148,7 +189,7 @@ class StorageInspectionDialog(tk.Toplevel):
         except tk.TclError:
             self.status.set("Could not copy. Select and copy the displayed technical details manually.")
             return
-        self.status.set("Only technical header fields copied.")
+        self.status.set("Report copied. No patient field values included.")
 
     def close(self) -> None:
         if self._busy:

@@ -134,7 +134,7 @@ class App(tk.Tk):
         self.scan_button = ttk.Button(options, text="Scan input", command=self.scan)
         self.scan_button.grid(row=0, column=2, sticky="e")
         self.inspect_button = ttk.Button(
-            options, text="Inspect format…", command=self.show_storage_inspection
+            options, text="Inspect file…", command=self.show_storage_inspection
         )
         self.inspect_button.grid(row=0, column=1, sticky="e", padx=(8, 8))
         ttk.Label(
@@ -442,8 +442,20 @@ class App(tk.Tk):
         def dismissed() -> None:
             self._inspection_window = None
 
+        def check_identifiers(number: int) -> None:
+            from ..core.privacy_inspection import inspect_privacy
+
+            self.status.set("Checking for potential identifying data locally. No files are changed.")
+            self._launch(
+                lambda: inspect_privacy(
+                    Path(value), file_id=number, recursive=recursive, cancel=self._cancel,
+                ),
+                "storage_inspection",
+            )
+
         self._inspection_window = StorageInspectionDialog(
             self, file_number=file_number, inspect_callback=inspect,
+            privacy_callback=check_identifiers,
             cancel_callback=self.cancel, close_callback=dismissed,
         )
 
@@ -592,8 +604,8 @@ class App(tk.Tk):
             elif kind == "storage_inspection":
                 assert isinstance(value, dict)
                 self.progress.configure(mode="determinate", value=0)
-                self.counts.set("Format inspection finished")
-                self.status.set("Format inspection finished. No files were changed.")
+                self.counts.set("File inspection finished")
+                self.status.set("File inspection finished. No files were changed.")
                 if self._inspection_window is not None:
                     self._inspection_window.show_result(value)
             elif kind == "cancelled":
@@ -754,6 +766,19 @@ def check_startup() -> None:
             assert result["status"] == "INSPECTED"
             assert result["sop_class"]["uid"] == str(EncapsulatedPDFStorage)
             assert result["modality"] == "DOC" and not result["supported_storage_class"]
+            assert "SYNTHETIC-ID" not in text and "Synthetic^Only" not in text
+            assert str(ds.SOPInstanceUID) not in text and temporary not in text
+            dialog.privacy_button.invoke()
+            deadline = time.monotonic() + 15
+            while app._busy:
+                assert time.monotonic() < deadline, "Synthetic identifier inspection timed out."
+                app.update()
+                time.sleep(0.01)
+            text = dialog.details.get("1.0", "end")
+            privacy = json.loads(text)
+            assert privacy["status"] == "REVIEW_REQUIRED"
+            assert privacy["summary"]["direct_identifiers"] >= 2
+            assert privacy["summary"]["entity_uids"] >= 1
             assert "SYNTHETIC-ID" not in text and "Synthetic^Only" not in text
             assert str(ds.SOPInstanceUID) not in text and temporary not in text
             dialog.close()

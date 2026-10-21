@@ -218,6 +218,21 @@ def check_storage_inspection(app: App, source: Path) -> None:
     standard = json.loads(dialog.details.get("1.0", "end"))
     assert standard["files"][0]["sop_class"]["uid"] == str(EncapsulatedPDFStorage)
     assert not standard["files"][0]["supported_storage_class"]
+    dialog.file_number.set("2")
+    dialog.privacy_button.invoke()
+    assert app._busy and dialog.privacy_button.instate(["disabled"])
+    finish(app)
+    privacy_text = dialog.details.get("1.0", "end").strip()
+    privacy = json.loads(privacy_text)
+    assert privacy["inspection_type"] == "privacy"
+    assert privacy["status"] == "REVIEW_REQUIRED" and privacy["privacy_review"] == "REQUIRED"
+    assert privacy["summary"]["direct_identifiers"] >= 2
+    assert privacy["summary"]["entity_uids"] >= 1
+    for sensitive in (str(source), "Synthetic^Only", "SYNTHETIC-ID", str(original.SOPInstanceUID)):
+        assert sensitive not in privacy_text
+    with patch.object(dialog, "clipboard_clear"), patch.object(dialog, "clipboard_append") as append:
+        dialog.copy_button.invoke()
+        assert json.loads(append.call_args.args[0]) == privacy
     assert app._report is previous_report
     assert before == {
         path: hashlib.sha256(path.read_bytes()).digest() for path in source.iterdir()
@@ -236,21 +251,22 @@ def check_storage_inspection(app: App, source: Path) -> None:
         assert cancel.wait(5), "The dialog did not cancel its worker."
         return {"status": "CANCELLED"}
 
-    app.input_path.set(str(source))
-    app.inspect_button.invoke()
-    dialog = app._inspection_window
-    assert dialog is not None
-    dialog.file_number.set("2")
-    with patch(
-        "opendicom_deid.core.storage_inspection.inspect_storage",
-        side_effect=wait_for_cancellation,
+    for function, button_name in (
+        ("opendicom_deid.core.storage_inspection.inspect_storage", "inspect_button"),
+        ("opendicom_deid.core.privacy_inspection.inspect_privacy", "privacy_button"),
     ):
-        dialog.inspect_button.invoke()
-        assert app._busy
-        dialog.close()
-        finish(app)
-    assert app._inspection_window is None and app.grab_current() is None
-    print("GUI: local format inspection, private class opt-in, and safe copying passed.")
+        app.input_path.set(str(source))
+        app.inspect_button.invoke()
+        dialog = app._inspection_window
+        assert dialog is not None
+        dialog.file_number.set("2")
+        with patch(function, side_effect=wait_for_cancellation):
+            getattr(dialog, button_name).invoke()
+            assert app._busy
+            dialog.close()
+            finish(app)
+        assert app._inspection_window is None and app.grab_current() is None
+    print("GUI: local format/identifier inspection, safe copying, and cancellation passed.")
 
 
 def main() -> None:

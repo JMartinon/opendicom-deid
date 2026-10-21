@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.4 is an initial validation release.** Automated checks do not prove
+**Version 0.1.5 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -62,6 +62,10 @@ you want a flat output directory (CLI: `--organization flat`).
 
 ### ViewRay private RT plans
 
+To check an original plan for potential identifying metadata without changing
+it, use **Inspect file… → Check identifiers**, described below. This is separate
+from the optional export mode.
+
 The observed ViewRay RTPLAN class
 `2.16.840.1.114493.1.2.1.4.1.1.481.5` has an explicit **public-data research export**
 mode. In version 0.1.4 or newer, open **Advanced options**, enable **ViewRay
@@ -96,6 +100,42 @@ opendicom-deid deidentify /path/to/input /path/to/output --viewray-public-plan
 Reports use a new `.json` filename and never overwrite an existing file. Saving
 inside the selected input tree is prohibited. Pseudonym and UID mappings exist
 only in memory; this version offers no reversible identity export.
+
+### Check an original file for identifying information
+
+In version 0.1.5 or newer, choose the same input folder and subfolder setting as
+the failed run, click **Inspect file…**, enter the report's file number (for
+example, `199` for `File 000199`), then click **Check identifiers**. No output
+folder is needed. It reads the original file without removing private fields,
+changing files, or uploading data.
+
+The report lists populated identifying fields, other names/dates/free text,
+original entity UIDs, and private or opaque content requiring review. It can
+also flag occurrences of known patient identifiers in readable private values.
+Only tag locations, standard field names, and counts appear in the report;
+patient values, source paths, and original UIDs are omitted. Use **Copy report**
+to share those findings for troubleshooting.
+
+**No matches does not mean anonymous.** Compressed, encoded, unknown, oversized,
+unreadable, or uninspected content can still contain identifiers. The check does
+not inspect pixels and never gives privacy clearance. The result remains
+`REVIEW_REQUIRED`. A populated field may contain a pseudonym or dummy value;
+the check cannot decide that from its location alone. Review values locally in
+an authorized DICOM viewer when necessary, including nested sequences and
+private fields, without sharing raw dumps.
+
+Even a plan without names or patient IDs cannot simply be copied into a
+de-identified batch: study, instance, frame-of-reference, and nested reference
+UIDs must remain consistent with the transformed images, structures, and dose.
+This inspection does not change the anonymization or private-field retention policy.
+
+CLI equivalent:
+
+```sh
+opendicom-deid inspect-privacy /path/to/input --file-id 199
+```
+
+Exit code zero means the inspection ran, not that privacy checks passed.
 
 ## Install a desktop build
 
@@ -180,13 +220,13 @@ can inspect that file's technical storage information automatically.
 
 **Desktop app (Windows, macOS, or Linux; no Python or terminal needed):**
 
-1. Open version 0.1.3 or newer on the computer containing the original data.
+1. Open version 0.1.5 or newer on the computer containing the original data.
 2. Select the same input folder and **Include subfolders** setting used in the failed run.
-3. Click **Inspect format…**, enter **199**, and click **Inspect**. If you first
+3. Click **Inspect file…**, enter **199**, and click **Inspect format**. If you first
    run **Scan input**, the first unsupported file number is filled in automatically.
 4. If the storage class is unknown/private, check **Show vendor-specific storage
-   class IDs** and click **Inspect** again.
-5. Click **Copy technical details** to copy the small JSON result for troubleshooting.
+   class IDs in format details** and click **Inspect format** again.
+5. Click **Copy report** to copy the small JSON result for troubleshooting.
 
 No output folder is needed. This works offline on the computer holding the data;
 the source dataset does not need to be moved. Nothing is copied to the clipboard
@@ -255,7 +295,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
 **Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.4`, runs native builds and creates a **draft prerelease**. The
+for example `v0.1.5`, runs native builds and creates a **draft prerelease**. The
 draft allows artifact testing before a maintainer deliberately publishes it.
 No workflow changes repository visibility.
 

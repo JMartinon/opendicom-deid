@@ -99,6 +99,37 @@ actual plan or the completeness of its exported public data.
 
 ## Other automated checks
 
+### Read-only identifier screening
+
+Version 0.1.5 adds **Inspect file… → Check identifiers** and the equivalent
+`inspect-privacy` CLI command. It reads the selected original file without the
+anonymizer's private-tag removal. Findings identify populated common identifier
+fields, person names, dates/times, free text, original entity/reference UIDs, and
+private or opaque content requiring local review. Standard dictionary keywords,
+tag paths and counts are returned; original field values, private creator names,
+file paths, filenames, and entity UIDs are never included in the report.
+
+Known PatientName/PatientID values are used in memory for exact byte matching
+against loaded private values. Candidate tokens are length-limited, with UTF-16
+forms added when the source bytes decode as UTF-8. Matching is incomplete and
+does not decode arbitrary proprietary formats. A populated field or byte match
+is a review candidate, not proof of a real patient identity. Absence of matches
+does not establish anonymity. Completed inspection always returns
+`REVIEW_REQUIRED`; the de-identification policy is unchanged.
+
+The screen refuses files over 64 MiB and deflated datasets, defers individual
+values over 1 MiB, and limits traversal depth, sequence items, element counts,
+and returned findings. Limit hits, unreadable fields and parser diagnostics
+remain explicit. These traversal limits do not prevent pydicom's earlier eager
+sequence parsing. Pixels, metadata after pixels, and compressed/encrypted or
+unknown content are outside the screening claim.
+
+Synthetic tests cover nested identifying fields, private bytes/strings/sequences,
+malformed private FD, UTF-16 matches, source immutability, diagnostic suppression,
+all inspection limits, incomplete and cancelled results, file numbering, and CLI
+exit semantics. Source and packaged GUI smoke checks exercise the new button and
+value-free results; source GUI checks also verify copying and cancellation.
+
 ### Secondary Capture source modalities
 
 The TCIA evaluation collection includes 57 mammography images stored using

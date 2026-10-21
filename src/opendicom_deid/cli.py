@@ -49,6 +49,12 @@ def parser() -> argparse.ArgumentParser:
     validate.add_argument("input", type=Path)
     validate.add_argument("--no-recursive", action="store_true")
     validate.add_argument("--report", type=Path)
+    privacy = commands.add_parser(
+        "inspect-privacy", help="Read-only screening for identifying fields; never privacy clearance"
+    )
+    privacy.add_argument("input", type=Path)
+    privacy.add_argument("--file-id", required=True, type=int, help="File number from the scan report")
+    privacy.add_argument("--no-recursive", action="store_true")
     return result
 
 
@@ -74,6 +80,17 @@ def main(argv: list[str] | None = None) -> int:
         signal.default_int_handler if args.command == "validate" else lambda *_: cancel.set(),
     )
     try:
+        if args.command == "inspect-privacy":
+            from .core.privacy_inspection import inspect_privacy
+
+            result = inspect_privacy(
+                args.input, file_id=args.file_id, recursive=not args.no_recursive, cancel=cancel
+            )
+            print(json.dumps(result, indent=2))
+            if result["status"] == "CANCELLED":
+                return 130
+            # Zero denotes completed inspection, never absence of identifying data.
+            return 0 if result["status"] == "REVIEW_REQUIRED" else 1
         if args.command == "scan":
             from .core.scanner import scan_directory
 
