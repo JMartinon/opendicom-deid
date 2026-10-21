@@ -103,9 +103,23 @@ def apply_theme(root: tk.Tk) -> None:
         foreground=[("readonly", TEXT)],
         bordercolor=[("focus", ACCENT)],
     )
-    style.configure("TCheckbutton", background=SURFACE, padding=(0, 4), focuscolor=ACCENT)
+    style.configure(
+        "TCheckbutton",
+        background=SURFACE,
+        padding=(0, 4),
+        focuscolor=ACCENT,
+        indicatorbackground=SURFACE,
+        indicatorforeground=ACCENT,
+        upperbordercolor=BORDER,
+        lowerbordercolor=BORDER,
+        indicatormargin=(0, 0, 6, 0),
+    )
     style.map(
-        "TCheckbutton", background=[("active", SURFACE)], foreground=[("disabled", "#8C96A0")]
+        "TCheckbutton",
+        background=[("active", SURFACE)],
+        foreground=[("disabled", "#8C96A0")],
+        indicatorbackground=[("selected", ACCENT)],
+        indicatorforeground=[("selected", SURFACE)],
     )
     style.configure(
         "Horizontal.TProgressbar",
@@ -114,7 +128,26 @@ def apply_theme(root: tk.Tk) -> None:
         borderwidth=0,
         lightcolor=ACCENT,
         darkcolor=ACCENT,
-        thickness=6,
+        bordercolor="#E6EBEF",
+        arrowsize=4,
+        sliderlength=8,
+        gripsize=0,
+    )
+    # Clam sizes these native elements through arrowsize; thickness is ignored
+    # on Tk 8.6/9. Remove optional text from the progress layout to keep it slim.
+    style.layout(
+        "Horizontal.TProgressbar",
+        [
+            (
+                "Horizontal.Progressbar.trough",
+                {
+                    "sticky": "nsew",
+                    "children": [
+                        ("Horizontal.Progressbar.pbar", {"side": "left", "sticky": "ns"}),
+                    ],
+                },
+            ),
+        ],
     )
     style.configure("TSeparator", background=BORDER)
     style.configure(
@@ -123,6 +156,24 @@ def apply_theme(root: tk.Tk) -> None:
         troughcolor=SURFACE,
         borderwidth=0,
         arrowsize=12,
+        bordercolor=SURFACE,
+        lightcolor=SURFACE,
+        darkcolor=SURFACE,
+        gripsize=0,
+    )
+    style.layout(
+        "Vertical.TScrollbar",
+        [
+            (
+                "Vertical.Scrollbar.trough",
+                {
+                    "sticky": "ns",
+                    "children": [
+                        ("Vertical.Scrollbar.thumb", {"sticky": "nswe"}),
+                    ],
+                },
+            ),
+        ],
     )
     root.option_add("*Listbox.font", (family, size))
     root.option_add("*Listbox.background", SURFACE)

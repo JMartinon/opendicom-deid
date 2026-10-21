@@ -88,12 +88,12 @@ class App(tk.Tk):
         self.scan_summary = tk.StringVar(value="DICOM files and modalities will appear here.")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        frame = ttk.Frame(self, padding=(24, 18))
+        frame = ttk.Frame(self, padding=(24, 16))
         frame.grid(sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(4, weight=1)
         header = ttk.Frame(frame)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="OpenDICOM De-ID", style="Title.TLabel").grid(sticky="w")
         ttk.Label(
@@ -102,12 +102,9 @@ class App(tk.Tk):
         ttk.Label(header, text="OFFLINE", style="Badge.TLabel").grid(row=0, column=1, padx=(16, 12))
         ttk.Button(header, text="About", command=self.show_about).grid(row=0, column=2)
 
-        directories = ttk.Frame(frame, style="Card.TFrame", padding=(18, 14))
+        directories = ttk.Frame(frame, style="Card.TFrame", padding=(18, 12))
         directories.grid(row=1, sticky="ew")
         directories.columnconfigure(0, weight=1)
-        ttk.Label(directories, text="Dataset & destination", style="Section.TLabel").grid(
-            row=0, sticky="w", pady=(0, 10)
-        )
         self.input_entry, self.input_browse = self._directory_row(
             directories, 1, "Input folder", self.input_path, True
         )
@@ -120,7 +117,7 @@ class App(tk.Tk):
             directories,
             text="Choose an empty folder outside the input folder, or create a new one.",
             style="CardMuted.TLabel",
-        ).grid(row=3, sticky="w", pady=(0, 8))
+        ).grid(row=3, sticky="w", pady=(0, 4))
         options = ttk.Frame(directories, style="Card.TFrame")
         options.grid(row=4, column=0, sticky="ew")
         options.columnconfigure(0, weight=1)
@@ -135,10 +132,10 @@ class App(tk.Tk):
         self.scan_button.grid(row=0, column=1, sticky="e")
         ttk.Label(
             directories, textvariable=self.scan_summary, style="CardMuted.TLabel", wraplength=700
-        ).grid(row=5, sticky="w", pady=(8, 0))
+        ).grid(row=5, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(frame)
-        actions.grid(row=2, sticky="ew", pady=(12, 12))
+        actions.grid(row=2, sticky="ew", pady=(10, 10))
         actions.columnconfigure(0, weight=1)
         self.advanced_button = ttk.Button(
             actions, text="Advanced options", command=self.toggle_advanced
@@ -169,7 +166,7 @@ class App(tk.Tk):
             command=self.toggle_advanced,
         ).grid(row=1, sticky="e", padx=20, pady=(0, 20))
 
-        results = ttk.Frame(frame, style="Card.TFrame", padding=(18, 14))
+        results = ttk.Frame(frame, style="Card.TFrame", padding=(18, 12))
         results.grid(row=4, sticky="nsew")
         results.columnconfigure(0, weight=1)
         results.rowconfigure(4, weight=1)
@@ -181,12 +178,12 @@ class App(tk.Tk):
         )
         self.save_button.grid(row=0, column=1, sticky="e")
         ttk.Label(results, textvariable=self.status, style="Card.TLabel", wraplength=700).grid(
-            row=1, columnspan=2, sticky="w", pady=(10, 8)
+            row=1, columnspan=2, sticky="w", pady=(6, 6)
         )
         self.progress = ttk.Progressbar(results, maximum=100, mode="determinate")
         self.progress.grid(row=2, columnspan=2, sticky="ew")
         ttk.Label(results, textvariable=self.counts, style="CardMuted.TLabel").grid(
-            row=3, columnspan=2, sticky="w", pady=(6, 8)
+            row=3, columnspan=2, sticky="w", pady=(6, 6)
         )
         details_frame = ttk.Frame(results, style="Card.TFrame")
         details_frame.grid(row=4, columnspan=2, sticky="nsew")

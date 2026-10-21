@@ -36,6 +36,9 @@ def main() -> None:
     try:
         save(app, "main.png")
         app.geometry("740x680")
+        app.update()
+        if app.details.winfo_height() < 80:
+            raise RuntimeError("The compact window must leave room for several lines of findings.")
         save(app, "compact.png")
         app.toggle_advanced()
         save(app._advanced_window, "advanced.png")
