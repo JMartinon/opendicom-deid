@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opendicom-deid"
+version = "0.1.0"
+description = "Simple, offline, cross-platform DICOM de-identification."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES/*"]
+authors = [{name = "OpenDICOM De-ID contributors"}]
+dependencies = ["pydicom==3.0.2", "dicom-anonymizer==2.1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff>=0.14,<1"]
+build = ["pyinstaller>=6.16,<7"]
+
+[project.scripts]
+opendicom-deid = "opendicom_deid.__main__:main"
+opendicom-deid-cli = "opendicom_deid.cli:main"
+
+[project.gui-scripts]
+opendicom-deid-gui = "opendicom_deid.gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

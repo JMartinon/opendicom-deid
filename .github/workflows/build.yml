@@ -1,0 +1,61 @@
+name: Native desktop builds
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            architecture: x64
+            target: Windows-x86_64
+          - os: macos-15
+            architecture: arm64
+            target: macOS-arm64
+          - os: macos-15-intel
+            architecture: x64
+            target: macOS-x86_64
+          - os: ubuntu-24.04
+            architecture: x64
+            target: Ubuntu-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.architecture }}
+      - run: python -m pip install '.[build,dev]'
+      - run: python -m ruff check .
+      - run: python -m pytest
+      - name: Install Linux display support
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+      - name: GUI smoke check (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/smoke_gui.py
+      - name: GUI smoke check (Windows / macOS)
+        if: runner.os != 'Linux'
+        run: python scripts/smoke_gui.py
+      - run: python scripts/build.py
+      - name: Frozen application smoke check (macOS)
+        if: runner.os == 'macOS'
+        run: dist/OpenDICOM-De-ID.app/Contents/MacOS/OpenDICOM-De-ID --version
+      - name: Frozen application smoke check (Linux)
+        if: runner.os == 'Linux'
+        run: dist/OpenDICOM-De-ID/OpenDICOM-De-ID --version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OpenDICOM-De-ID-${{ matrix.target }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,68 @@
+"""Advanced controls expose only implemented, supported settings."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from ..core.models import Options
+
+
+class AdvancedSettings(ttk.Frame):
+    def __init__(self, parent: tk.Misc) -> None:
+        super().__init__(parent, padding=(14, 10))
+        self.prefix = tk.StringVar(value="SUBJECT")
+        self.date_mode = tk.StringVar(value="Remove dates")
+        self.grouping = tk.BooleanVar(value=False)
+        self.columnconfigure(1, weight=1)
+        ttk.Label(self, text="Patient ID prefix").grid(row=0, column=0, sticky="w", padx=(0, 12))
+        self.prefix_entry = ttk.Entry(self, textvariable=self.prefix, width=20)
+        self.prefix_entry.grid(row=0, column=1, sticky="ew")
+        ttk.Label(
+            self,
+            text="Use a neutral label, never a patient name or original identifier.",
+            wraplength=440,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 12))
+        ttk.Label(self, text="Dates").grid(row=2, column=0, sticky="w")
+        self.date_combo = ttk.Combobox(
+            self,
+            textvariable=self.date_mode,
+            values=("Remove dates", "Shift consistently per patient"),
+            state="readonly",
+        )
+        self.date_combo.grid(row=2, column=1, sticky="ew")
+        ttk.Label(
+            self,
+            text="Shifting preserves date intervals within each patient in this batch. "
+            "It can retain identifying temporal patterns.",
+            wraplength=500,
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 12))
+        self.group_check = ttk.Checkbutton(
+            self,
+            text="Preserve source grouping with neutral folder names",
+            variable=self.grouping,
+        )
+        self.group_check.grid(row=4, column=0, columnspan=2, sticky="w")
+        ttk.Label(
+            self,
+            text="Separate dose runs remain separate. Original folder names are never copied.",
+            wraplength=500,
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 10))
+        ttk.Label(
+            self,
+            text="Private tags are removed. Pixel data is preserved. Validation is always enabled.",
+            wraplength=500,
+        ).grid(row=6, column=0, columnspan=2, sticky="w")
+
+    def options(self, recursive: bool) -> Options:
+        return Options(
+            recursive=recursive,
+            patient_prefix=self.prefix.get().strip(),
+            date_mode="remove" if self.date_mode.get() == "Remove dates" else "shift",
+            organization="source" if self.grouping.get() else "flat",
+        )
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.prefix_entry.configure(state="normal" if enabled else "disabled")
+        self.date_combo.configure(state="readonly" if enabled else "disabled")
+        self.group_check.configure(state="normal" if enabled else "disabled")

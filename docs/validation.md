@@ -1,0 +1,87 @@
+# Validation evidence and remaining acceptance work
+
+This document describes implementation evidence, not certification or clinical
+acceptance. All test objects are generated in temporary directories from
+synthetic values. No original ViewRay or other patient dataset was used.
+
+## Radiotherapy regression
+
+`tests/test_rt_references.py` constructs 661 interconnected objects: 198 CT,
+450 MR, 11 RTDOSE, one RTPLAN with 21 beams, and one RTSTRUCT with 31 ROIs.
+The sources occupy nested image, plan, and repeated dose-run directories.
+
+Before processing, the test establishes that all 255 inspected instance
+references resolve: 241 in RTSTRUCT, three in RTPLAN, and 11 in RTDOSE. After
+processing, every reference resolves to its consistently remapped target. The
+test also checks instance counts, patient/study/frame linkage, contour numbers,
+beam parameters, geometry, and exact pixel bytes.
+
+The test then deliberately restores all 255 original nested references while
+leaving the replacement instance UIDs in place. All files remain parsable, but
+the independent validator rejects the output and emits no reference-integrity
+PASS. This reproduces the reported failure mode without claiming to reproduce
+every vendor-specific characteristic of the original files.
+
+## Other automated checks
+
+The suite covers CT, MR, RTIMAGE, grid and legacy non-grid RTDOSE; patient identity
+and issuer grouping; multiple studies; shared Study/Series/Frame of Reference
+UIDs; deeply nested and multivalued UIDs; preserved technical identifiers;
+identical copies and conflicting duplicates; external references; consistent
+date shifts; source grouping; cancellations and partial failures; protected
+destinations; malformed metadata; and reports that exclude source identities.
+
+The ViewRay private FD-length regression is tested by inserting the six-byte
+value `b'0.938 '` at `(01F1,1026)`, both at the root and inside a sequence. The
+reader removes raw private elements before conversion. It never enables
+`convert_wrong_length_to_UN` globally. Wrong public value representations and
+malformed clinical fields fail, rather than being silently reinterpreted.
+
+Adversarial validation tests change pixels, geometry, dates, pseudonyms,
+technical UIDs, references, file meta, and the preamble; add private metadata;
+or remove output files. These cases must fail the relevant checks. Compressed
+pixel encapsulation is checked for complete nonempty fragments and valid basic
+offset-table targets. Compressed images are **not decoded**: successful byte
+preservation is not evidence that an arbitrary compressed stream can be displayed.
+
+## Scope of the checks
+
+- Readability means strict metadata parsing, public value-representation checks,
+  and selected structural checks. It is not exhaustive DICOM IOD conformance.
+- Clinical preservation compares selected numeric metadata and byte fingerprints
+  at their sequence paths. It does not verify treatment-plan clinical correctness.
+- Byte-identical copies of an instance share their replacement UID. Non-identical
+  files with the same original instance UID are rejected conservatively, even
+  if the difference might only be a harmless alternate representation.
+- Missing patient IDs are grouped by study with an explicit warning; cross-study
+  linkage cannot be inferred reliably. Conflicting demographics under the same
+  scoped ID fail rather than silently combining patients.
+- Legacy point/isodose RTDOSE content is preserved without requiring image-grid
+  fields. Those modules are retired in the current standard; DVH-only objects
+  also need no grid. See the [current RT Dose module table](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_A.18.3.html).
+- Unknown public attributes, unknown UID semantics, private SOP classes, and
+  unsupported storage classes require specialized handling. An explicit failure
+  protects against an unsupported object being presented as successfully cleaned.
+- MPEG/HEVC video transfer syntaxes are unsupported. Their frame encapsulation
+  and pixel privacy requirements need separate validation.
+- Only a completed directory rename publishes the output. A forced process kill,
+  crash, power loss, or failed cleanup can leave a hidden `.opendicom-incomplete-*`
+  directory beside the destination. It must not be shared as a completed result.
+
+## Local and platform acceptance
+
+On October 21, 2026, all **103 tests passed** locally on both Python 3.12.14 and
+Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
+regression described above, strict parser failures, transactional cleanup, and
+an isolated process with socket connections blocked.
+
+Local validation is performed on Apple Silicon macOS. Native GitHub Actions
+workflows provide separate Windows x86-64, macOS ARM64/Intel, and Ubuntu x86-64
+test/build jobs. Consult their actual results; workflow configuration alone is
+not evidence that an artifact works.
+
+Before distributing this initial release, open the extracted artifact on a clean
+machine without Python, test the synthetic RT outputs in the intended viewer,
+and check representative authorized datasets locally. Slicer/SlicerRT and real
+ViewRay acceptance testing have not been performed here. Every dataset still
+needs privacy review, including pixels, coded/free text, and recognizable anatomy.

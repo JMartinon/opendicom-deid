@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="450" viewBox="0 0 1000 450" role="img" aria-labelledby="title desc">
+  <title id="title">OpenDICOM De-ID workflow illustration</title>
+  <desc id="desc">Synthetic input contains CT, RTSTRUCT, RTPLAN and RTDOSE objects. Offline processing maps nested references consistently, then validates output. Privacy review is required.</desc>
+  <rect width="1000" height="450" rx="20" fill="#f1f5f9"/>
+  <g font-family="sans-serif" fill="#142735">
+    <text x="40" y="54" font-size="28" font-weight="700">OpenDICOM De-ID</text>
+    <text x="40" y="82" font-size="16" fill="#526575">Illustration • Synthetic data only • Entirely offline</text>
+    <rect x="40" y="120" width="270" height="228" rx="12" fill="white" stroke="#cbd5e1"/>
+    <text x="60" y="155" font-size="20" font-weight="700">1. Select input</text>
+    <text x="60" y="188" font-size="17">Synthetic CT: 3 files</text>
+    <text x="60" y="218" font-size="17">RTSTRUCT: 1 file</text>
+    <text x="60" y="248" font-size="17">RTPLAN: 1 file</text>
+    <text x="60" y="278" font-size="17">RTDOSE: 1 file</text>
+    <text x="60" y="322" font-size="15" fill="#526575">Nested directories supported</text>
+    <path d="M324 230h28m-7-7 7 7-7 7" fill="none" stroke="#2c7a7b" stroke-width="3"/>
+    <rect x="365" y="120" width="270" height="228" rx="12" fill="white" stroke="#cbd5e1"/>
+    <text x="385" y="155" font-size="20" font-weight="700">2. De-identify</text>
+    <text x="385" y="194" font-size="17">Consistent pseudonyms</text>
+    <text x="385" y="227" font-size="17">Nested UID references</text>
+    <text x="385" y="260" font-size="17">Private tags removed</text>
+    <text x="385" y="293" font-size="17">Pixel bytes preserved</text>
+    <path d="M649 230h28m-7-7 7 7-7 7" fill="none" stroke="#2c7a7b" stroke-width="3"/>
+    <rect x="690" y="120" width="270" height="228" rx="12" fill="white" stroke="#cbd5e1"/>
+    <text x="710" y="155" font-size="20" font-weight="700">3. Review results</text>
+    <text x="710" y="194" font-size="17">Reference comparison</text>
+    <text x="710" y="227" font-size="17">Readability checks</text>
+    <text x="710" y="260" font-size="17">Preservation checks</text>
+    <text x="710" y="293" font-size="17">Safe report export</text>
+    <rect x="40" y="372" width="920" height="48" rx="8" fill="#fff3d4"/>
+    <text x="60" y="403" font-size="17">Privacy review is required. Burned-in text and recognizable anatomy may remain.</text>
+  </g>
+</svg>
