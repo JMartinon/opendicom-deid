@@ -43,10 +43,20 @@ unsupported-object failure therefore does not mean only 650 DICOM files exist.
 Local inspection supplied by the user identified the exact class
 `2.16.840.1.114493.1.2.1.4.1.1.481.5`, `Modality=RTPLAN`, and Implicit VR Little
 Endian. The previous standard-only class list caused the reported rejection.
+The user identified the exporting system as MRIdian A3i (UDI-PI) **5.5.4.14**;
+this records the reported environment, not a tested compatibility claim.
 No patient dataset was transferred or used here. No public vendor specification
 for this class was located, so its similarity to a standard UID is not treated
 as proof of equivalence. [DICOM PS3.5 Section 9](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_9.html)
 prohibits inferring semantics from a UID's suffix.
+
+The vendor's [version 5.5 operator manual, L-0240 RevA, printed page 521](https://viewraysystems.com/wp-content/uploads/L-0240-Operators-Manual-for-the-MRIdian-Linac-System-Version-5.5_RevA.pdf#page=531)
+documents that **Export MRIdian RT Plan** is available after selecting **Export
+RT Plan**. It does not specify the resulting SOP classes, the private attributes,
+or whether the option adds or replaces an object. Unchecking it is therefore not
+a verified way to obtain a standard plan or avoid this rejection. A matching
+DICOM conformance statement/private data dictionary and export specification
+remain necessary to define a policy that preserves reconstruction inputs.
 
 Version 0.1.4 recognizes only this exact private class and offers an explicit,
 default-off **ViewRay public-data research export** option. It keeps the class
