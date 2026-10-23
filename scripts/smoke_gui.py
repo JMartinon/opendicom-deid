@@ -21,6 +21,7 @@ from pydicom.uid import (
     ImplicitVRLittleEndian,
     generate_uid,
 )
+from smoke_scrollbars import check_scrollbars
 
 from opendicom_deid.core.anonymizer import process_batch
 from opendicom_deid.core.models import Cancelled, Progress
@@ -79,7 +80,6 @@ def check_progress_and_theme(app: App) -> None:
             assert advance[index].wait(10), "The GUI stopped responding to stage progress."
         return Report(status="COMPLETED", input_count=4, output_count=4)
 
-    original_theme = app._theme_mode
     try:
         app._launch(worker, "report")
         for index, progress in enumerate(phases):
@@ -90,7 +90,7 @@ def check_progress_and_theme(app: App) -> None:
                 time.sleep(0.01)
             app.update()
             assert app._busy
-            assert app.theme_button.instate(["!disabled"])
+            assert not hasattr(app, "theme_button")
             if progress.total:
                 assert str(app.progress.cget("mode")) == "determinate"
                 expected = 100 * progress.completed / progress.total
@@ -101,10 +101,11 @@ def check_progress_and_theme(app: App) -> None:
                 width, height = app.progress.winfo_width(), app.progress.winfo_height()
                 assert "pbar" in app.progress.identify(int(width * 0.1), height // 2)
                 assert "pbar" not in app.progress.identify(int(width * 0.9), height // 2)
-                with patch("opendicom_deid.gui.app.persist_theme", return_value=True) as saved:
-                    app.theme_button.invoke()
+                mode = "light" if app._theme_mode == "dark" else "dark"
+                with patch.object(app, "_system_appearance", return_value=mode):
+                    app._sync_system_appearance()
                     app.update()
-                    saved.assert_called_once_with(app._theme_mode)
+                    assert app._theme_mode == mode
                 assert float(app.progress.cget("value")) == expected
                 assert app.details.cget("background") == current_palette(app).surface
                 assert app._advanced_window.cget("background") == current_palette(app).background
@@ -118,10 +119,8 @@ def check_progress_and_theme(app: App) -> None:
     finally:
         for event in advance:
             event.set()
-        if app._theme_mode != original_theme:
-            with patch("opendicom_deid.gui.app.persist_theme", return_value=True):
-                app.theme_button.invoke()
-    print("GUI: visible stage progress, responsive theme switching, and final completion passed.")
+        app._sync_system_appearance()
+    print("GUI: visible stage progress, automatic OS appearance changes, and completion passed.")
 
 
 def check_progress_completion(app: App) -> None:
@@ -424,6 +423,15 @@ def main() -> None:
         app.update()
         check_progress_and_theme(app)
         check_progress_completion(app)
+        with patch.object(app, "_system_appearance", side_effect=lambda: app._theme_mode):
+            check_scrollbars(app)
+        app._sync_system_appearance()
+        app._set_details("\n".join("Synthetic finding." for _ in range(100)))
+        app.update()
+        assert app.details_scrollbar.winfo_ismapped()
+        app._set_details("Short synthetic finding.")
+        app.update()
+        assert not app.details_scrollbar.winfo_ismapped()
         with tempfile.TemporaryDirectory(prefix="opendicom-gui-smoke-") as temporary:
             source = Path(temporary) / "input"
             write_synthetic_ct(source)

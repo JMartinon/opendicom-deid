@@ -8,18 +8,19 @@ from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Thread
 from tkinter import filedialog, messagebox, ttk
-from tkinter.scrolledtext import ScrolledText
 
 from .. import __version__
 from ..cli import report_path_allowed
 from ..core.models import Cancelled, Finding, Progress, ScanResult
 from ..core.report import Report, format_findings
+from .appearance import SystemAppearanceWatcher, macos_window_appearance
 from .dialogs import ask_directory
 from .licenses import license_text
 from .progress import LatestProgress, progress_display
 from .settings import AdvancedSettings
 from .storage_inspection import StorageInspectionDialog
-from .theme import apply_theme, persist_theme, style_plain_widget
+from .theme import apply_theme, style_plain_widget
+from .widgets import AutoHideScrollbar, ThemedScrolledText
 
 
 def create_output_folder(parent: str, name: str, input_directory: str) -> Path:
@@ -67,7 +68,14 @@ class App(tk.Tk):
 
     def __init__(self) -> None:
         super().__init__()
-        self._theme_mode = apply_theme(self)
+        self._appearance_id = None
+        self._appearance_watcher = None
+        native_appearance = macos_window_appearance(self)
+        if native_appearance is None:
+            self._appearance_watcher = SystemAppearanceWatcher()
+        self._theme_mode = apply_theme(
+            self, native_appearance or self._appearance_watcher.current
+        )
         self.title("OpenDICOM De-ID")
         self.minsize(740, 680)
         width = min(860, max(740, self.winfo_screenwidth() - 80))
@@ -108,9 +116,6 @@ class App(tk.Tk):
         ).grid(row=1, sticky="w", pady=(5, 0))
         ttk.Label(header, text="OFFLINE", style="Badge.TLabel").grid(row=0, column=1, padx=(16, 12))
         ttk.Button(header, text="About", command=self.show_about).grid(row=0, column=2)
-        self.theme_button = ttk.Button(header, command=self.toggle_theme)
-        self.theme_button.configure(text="Light mode" if self._theme_mode == "dark" else "Dark mode")
-        self.theme_button.grid(row=1, column=1, columnspan=2, sticky="e", pady=(5, 0))
 
         directories = ttk.Frame(frame, style="Card.TFrame", padding=(18, 12))
         directories.grid(row=1, sticky="ew")
@@ -217,9 +222,11 @@ class App(tk.Tk):
         )
         style_plain_widget(self.details, "muted")
         self.details.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(details_frame, orient="vertical", command=self.details.yview)
-        scroll.grid(row=0, column=1, sticky="ns", padx=(8, 0))
-        self.details.configure(yscrollcommand=scroll.set)
+        self.details_scrollbar = AutoHideScrollbar(
+            details_frame, orient="vertical", command=self.details.yview
+        )
+        self.details_scrollbar.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        self.details.configure(yscrollcommand=self.details_scrollbar.set)
         ttk.Label(
             frame, text="Pixels are preserved. Review privacy before sharing.", style="Muted.TLabel"
         ).grid(row=5, sticky="w", pady=(10, 0))
@@ -235,12 +242,24 @@ class App(tk.Tk):
         )
         results.bind("<Configure>", lambda event: self._wrap_labels(results, event.width - 40))
         self._poll_id = self.after(80, self._poll)
+        self._appearance_id = self.after(100, self._poll_system_appearance)
 
-    def toggle_theme(self) -> None:
-        self._theme_mode = apply_theme(self, "light" if self._theme_mode == "dark" else "dark")
-        self.theme_button.configure(text="Light mode" if self._theme_mode == "dark" else "Dark mode")
-        # Failure to save a cosmetic preference must not interrupt a running job.
-        persist_theme(self._theme_mode)
+    def _system_appearance(self) -> str:
+        native = macos_window_appearance(self)
+        if native is not None:
+            return native
+        if self._appearance_watcher is None:
+            self._appearance_watcher = SystemAppearanceWatcher(initial=self._theme_mode)
+        return self._appearance_watcher.current
+
+    def _sync_system_appearance(self) -> None:
+        mode = self._system_appearance()
+        if mode != self._theme_mode:
+            self._theme_mode = apply_theme(self, mode)
+
+    def _poll_system_appearance(self) -> None:
+        self._sync_system_appearance()
+        self._appearance_id = self.after(1000, self._poll_system_appearance)
 
     def _directory_row(
         self,
@@ -696,7 +715,7 @@ class App(tk.Tk):
             "BSD-3-Clause · Automated checks are not proof of privacy or regulatory compliance.",
             wraplength=630,
         ).grid(row=0, sticky="ew")
-        text = ScrolledText(
+        text = ThemedScrolledText(
             window,
             wrap="word",
             font="TkTextFont",
@@ -723,6 +742,11 @@ class App(tk.Tk):
             self.destroy()
 
     def destroy(self) -> None:
+        if getattr(self, "_appearance_id", None) is not None:
+            self.after_cancel(self._appearance_id)
+            self._appearance_id = None
+        if getattr(self, "_appearance_watcher", None) is not None:
+            self._appearance_watcher.stop()
         if getattr(self, "_poll_id", None) is not None:
             self.after_cancel(self._poll_id)
             self._poll_id = None
@@ -742,16 +766,31 @@ def check_startup() -> None:
     try:
         app.update_idletasks()
         # Verify both packaged palettes and a visibly filled progress element;
-        # startup checks must not change the user's saved appearance preference.
-        for mode in ("light", "dark"):
-            apply_theme(app, mode)
-            app._show_progress(Progress("Scanning", 1, 2))
-            app.update()
-            assert float(app.progress.cget("value")) == 50
-            assert app.progress.winfo_height() >= 10
-            assert "pbar" in app.progress.identify(
-                app.progress.winfo_width() // 4, app.progress.winfo_height() // 2
-            )
+        # startup checks must not change any OS appearance preference.
+        native_appearance = macos_window_appearance(app)
+        try:
+            for mode in ("light", "dark"):
+                if native_appearance is not None:
+                    # Override this synthetic window, never the OS preference.
+                    app.tk.call(
+                        "tk::unsupported::MacWindowStyle", "appearance", app,
+                        "darkaqua" if mode == "dark" else "aqua",
+                    )
+                    app._sync_system_appearance()
+                    assert app._theme_mode == mode
+                else:
+                    apply_theme(app, mode)
+                app._show_progress(Progress("Scanning", 1, 2))
+                app.update()
+                assert float(app.progress.cget("value")) == 50
+                assert app.progress.winfo_height() >= 10
+                assert "pbar" in app.progress.identify(
+                    app.progress.winfo_width() // 4, app.progress.winfo_height() // 2
+                )
+        finally:
+            if native_appearance is not None:
+                app.tk.call("tk::unsupported::MacWindowStyle", "appearance", app, "auto")
+            app._sync_system_appearance()
         app.toggle_advanced()
         app.update()
         app.toggle_advanced()

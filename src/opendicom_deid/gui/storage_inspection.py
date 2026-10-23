@@ -6,9 +6,9 @@ import json
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
-from tkinter.scrolledtext import ScrolledText
 
 from .theme import style_plain_widget
+from .widgets import ThemedScrolledText
 
 
 class StorageInspectionDialog(tk.Toplevel):
@@ -78,14 +78,11 @@ class StorageInspectionDialog(tk.Toplevel):
         ttk.Label(body, textvariable=self.status, wraplength=640, style="Muted.TLabel").grid(
             row=4, sticky="ew", pady=(4, 10)
         )
-        self.details = ScrolledText(
+        self.details = ThemedScrolledText(
             body, wrap="word", font="TkFixedFont", height=12,
             relief="flat", borderwidth=0,
             padx=10, pady=10, state="disabled",
         )
-        style_plain_widget(self.details)
-        style_plain_widget(self.details.frame)
-        style_plain_widget(self.details.vbar)
         self.details.grid(row=5, sticky="nsew")
         buttons = ttk.Frame(body)
         buttons.grid(row=6, sticky="ew", pady=(14, 0))

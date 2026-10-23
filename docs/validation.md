@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.2.2
+# Validation evidence and remaining acceptance work — 0.2.3
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -141,11 +141,12 @@ inputs for independent dose reconstruction.
 
 ### Appearance and stage progress
 
-Version 0.2.2 adds light/dark palettes and file-based progress for the current
-stage. `tests/test_theme.py` covers preference round trips, invalid/oversized
-settings, failed writes, platform settings locations and palette contrast.
-Only the appearance choice is persisted; application paths and patient data
-are not saved in that file.
+Version 0.2.3 follows OS light/dark appearance without an app preference or
+switch. `tests/test_appearance.py` covers macOS native/fallback queries, Windows
+application appearance, Linux portal/KDE/GTK fallbacks, bounded local commands,
+and background watcher updates, failures and shutdown. Detection does not write
+settings or use a network service. `tests/test_theme.py` checks contrast for
+text, progress and scrollbar thumbs in both palettes.
 
 `tests/test_progress.py` checks stage percentages, completion counting for
 skipped/rejected scan files, bounded latest-update storage, the final source
@@ -154,10 +155,12 @@ completed in that stage, not elapsed time or total job completion. Unknown-lengt
 steps use an animated indicator rather than a fabricated percentage.
 
 The GUI smoke check holds a synthetic worker between stages to inspect the
-painted progress element and displayed counts. It also switches themes during
+painted progress element and displayed counts. It also simulates OS appearance changes during
 processing and checks that the job remains active and its progress is preserved.
 Packaged startup checks exercise both palettes and a visibly filled progress
-element. These checks do not replace visual acceptance on each target platform.
+element. The scrollbar smoke check exercises native dragging, page movement,
+resizing, automatically hidden tracks and unchanged read-only text. These checks
+do not replace visual acceptance on each target platform.
 
 ### Clinical text, equipment fields and strict mode
 
@@ -326,6 +329,17 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
+For version 0.2.3 on October 23, 2026, **519 tests passed** locally on Python
+3.12.14 with Tcl/Tk. On Python 3.14.7 without Tcl/Tk, **517 tests passed** and the
+two-test palette module was skipped as a whole. Ruff reported no errors.
+Native macOS GUI checks passed for automatic appearance changes, stage progress,
+cancellation and scrollbar dragging, paging, resizing and automatic hiding.
+The locally packaged macOS ARM64 application passed native appearance and frozen
+startup checks, plus synthetic equipment/clinical text, ViewRay opt-in, reference
+and pixel checks. De-identification policies are unchanged in this release.
+Native Windows and Linux 0.2.3 verification remains outstanding; no hosted
+Actions builds were run for this update.
+
 For version 0.2.2 on October 23, 2026, **482 tests passed** locally on Python
 3.12.14 with Tcl/Tk. On Python 3.14.7 without Tcl/Tk, **464 tests passed** and the
 18-test appearance module was skipped as a whole. Ruff reported no errors.
@@ -363,7 +377,7 @@ short identifiers, and deliberate output tampering. Twenty-two reference-class
 tests cover the narrow correction, identity scope, duplicate targets, safe
 diagnostics, unchanged source content, and output tampering. Local GUI smoke
 checks passed. These earlier release results are historical evidence, not
-test counts for 0.2.2.
+test counts for 0.2.3.
 
 Builds now run locally by default. The **Tests**, **Native desktop builds** and
 **Draft versioned release** workflows require deliberate manual initiation;

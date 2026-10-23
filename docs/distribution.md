@@ -80,8 +80,9 @@ GitHub Actions. All hosted workflows require an explicit manual run; the full
 test matrix and native packages still consume Actions minutes when requested.
 Do not dispatch them merely to make a local build.
 
-The 0.2.2 desktop update uses the existing Tk runtime for dark mode and stage
-progress; it adds no theme service or download at runtime. Build and check the
+The 0.2.3 desktop update follows OS appearance and uses consistent scrollbars.
+It uses the existing Tk runtime and local OS settings, with no additional Python
+dependency or network service. Build and check the
 macOS package on the Mac, the Linux package on the workstation, and the Windows
 executable on a Windows computer using the commands below. Hosted builds are
 optional and are not needed for this update.
@@ -253,9 +254,11 @@ separately configured credentials and are not part of these workflows.
    correction with the research option enabled and check its explicit warning.
 4. Verify cancellation, invalid output directories, report export, and About
    license viewing. Reports must use a new filename outside input.
-5. Switch between **Dark mode** and **Light mode**, including during synthetic
+5. Change the **operating system's** application appearance, including during synthetic
    processing. Check fields, findings, Advanced options and inspection/About
-   dialogs for readable text. Restart to verify the preference is remembered.
+   dialogs for readable text. Restart to verify the current OS setting is used;
+   no theme button or app-specific preference should be present. Verify the
+   scrollbar is hidden for short content and can drag/page through long content.
    Watch the visible bar and completed-file count through each processing stage;
    stage resets and animated unknown-length steps must not imply overall success.
 6. Import a synthetic output into the intended independent viewer, including

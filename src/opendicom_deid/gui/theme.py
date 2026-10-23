@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import os
-import sys
 import tkinter as tk
 from dataclasses import dataclass
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from tkinter import font, ttk
 from typing import Literal
 
@@ -47,7 +42,7 @@ PALETTES: dict[ThemeMode, Palette] = {
         disabled="#EDF0F3", disabled_text="#78838E", primary_active="#416D91",
         primary_pressed="#24445F", primary_disabled="#CBD5DE",
         primary_disabled_text="#647482", selection="#DCE8F2", badge="#E4ECF2",
-        badge_text="#345D7E", trough="#E6EBEF", scroll="#C3CED8", progress="#345D7E",
+        badge_text="#345D7E", trough="#E6EBEF", scroll="#8795A3", progress="#345D7E",
     ),
     "dark": Palette(
         background="#171C22", surface="#222A33", text="#E6EBF0", muted="#AEB9C5",
@@ -55,61 +50,9 @@ PALETTES: dict[ThemeMode, Palette] = {
         disabled="#272F39", disabled_text="#8995A3", primary_active="#4D7596",
         primary_pressed="#345672", primary_disabled="#344353",
         primary_disabled_text="#A0ADBB", selection="#35516B", badge="#2D3D4C",
-        badge_text="#BED3E5", trough="#394451", scroll="#596B7D", progress="#8DAFCD",
+        badge_text="#BED3E5", trough="#394451", scroll="#8294A6", progress="#8DAFCD",
     ),
 }
-
-
-def preference_path() -> Path:
-    """Store appearance alone in the user's normal application settings folder."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        configured = os.environ.get("XDG_CONFIG_HOME", "")
-        base = Path(configured) if configured and Path(configured).is_absolute() else Path.home() / ".config"
-    return base / "OpenDICOM-De-ID" / "appearance.json"
-
-
-def load_theme(path: Path | None = None) -> ThemeMode:
-    try:
-        path = path or preference_path()
-        # A settings file is tiny. Do not read an accidentally substituted large file.
-        if path.stat().st_size > 4096:
-            return "light"
-        settings = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(settings, dict) and settings.get("theme") in PALETTES:
-            return settings["theme"]
-    except (OSError, ValueError, TypeError):
-        pass
-    return "light"
-
-
-def persist_theme(mode: str, path: Path | None = None) -> bool:
-    """Best-effort atomic preference write; an unwritable folder cannot stop work."""
-    if mode not in PALETTES:
-        raise ValueError("Choose light or dark appearance.")
-    temporary: Path | None = None
-    try:
-        path = path or preference_path()
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".appearance-", delete=False
-        ) as stream:
-            temporary = Path(stream.name)
-            json.dump({"theme": mode}, stream)
-            stream.write("\n")
-        temporary.replace(path)
-        return True
-    except OSError:
-        return False
-    finally:
-        if temporary is not None:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
 def current_palette(widget: tk.Misc) -> Palette:
@@ -183,10 +126,8 @@ def _refresh_plain_widgets(root: tk.Misc, palette: Palette) -> None:
         pending.extend(widget.winfo_children())
 
 
-def apply_theme(root: tk.Tk, mode: ThemeMode | None = None) -> ThemeMode:
+def apply_theme(root: tk.Tk, mode: ThemeMode = "light") -> ThemeMode:
     """Apply a palette to ttk and all open Tk views, without altering their contents."""
-    if mode is None:
-        mode = load_theme()
     if mode not in PALETTES:
         raise ValueError("Choose light or dark appearance.")
     root._theme_mode = mode
@@ -279,12 +220,15 @@ def apply_theme(root: tk.Tk, mode: ThemeMode | None = None) -> ThemeMode:
     style.configure("TSeparator", background=p.border)
     style.configure(
         "Vertical.TScrollbar", background=p.scroll, troughcolor=p.surface,
-        borderwidth=0, arrowsize=12, bordercolor=p.surface, lightcolor=p.surface,
+        borderwidth=0, arrowsize=14, bordercolor=p.surface, lightcolor=p.surface,
         darkcolor=p.surface, gripsize=0,
     )
     style.map("Vertical.TScrollbar", background=[("active", p.muted), ("pressed", p.muted)])
+    # Keep Tk's native thumb and its standard scrolling/dragging bindings. The
+    # larger hit area stays usable without bevels, grip marks, or arrow buttons.
+    # AutoHideScrollbar removes this track when the whole document is visible.
     style.layout(
-        "Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {"sticky": "ns", "children": [
+        "Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {"sticky": "nsew", "children": [
             ("Vertical.Scrollbar.thumb", {"sticky": "nswe"}),
         ]})],
     )
