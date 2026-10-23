@@ -16,8 +16,8 @@ from pydicom.dataelem import DataElement
 from pydicom.dataset import Dataset
 from pydicom.multival import MultiValue
 
-from .equipment_text import IdentifierToken, capture_equipment_text, identifier_tokens
-from .sop_classes import VIEWRAY_RT_PLAN_STORAGE
+from .equipment_text import IdentifierToken, capture_equipment_text, identifier_tokens, text_values
+from .rt_text import RT_GROUPS, RT_TEXT_KEYWORDS
 
 
 @dataclass(frozen=True, repr=False)
@@ -41,6 +41,7 @@ class Snapshot:
     beam_names: dict[str, tuple[str, ...]]
     neutral_beam_names: dict[str, tuple[str, ...]]
     identifiers: frozenset[IdentifierToken]
+    rt_text: dict[str, tuple[str, str, tuple[str, ...]]]
 
 
 def walk_elements(ds: Dataset, prefix: str = "") -> Iterator[tuple[str, DataElement]]:
@@ -59,7 +60,7 @@ def uid_values(elem: DataElement) -> tuple[str, ...]:
 
 
 _NUMERIC_VRS = {"DS", "FD", "FL", "IS", "SL", "SS", "UL", "US", "SV", "UV"}
-_CLINICAL_GROUPS = {0x0018, 0x0020, 0x0028, 0x3002, 0x3004, 0x3006, 0x3008, 0x300A, 0x300C}
+_CLINICAL_GROUPS = {0x0018, 0x0020, 0x0028} | RT_GROUPS
 _CLINICAL_BINARY_TAGS = {
     0x7FE00001, 0x7FE00002, 0x7FE00003,  # extended frame offsets, lengths and total length
     0x7FE00010, 0x7FE00008, 0x7FE00009,  # native, encapsulated and floating point pixels
@@ -107,6 +108,7 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
     technical: dict[str, tuple[str, ...]] = {}
     references: dict[str, tuple[str, ...]] = {}
     clinical: dict[str, str] = {}
+    rt_text: dict[str, tuple[str, str, tuple[str, ...]]] = {}
     dates: dict[str, tuple[str, tuple[str, ...]]] = {}
     frames: set[str] = set()
     digest = hashlib.sha256()
@@ -125,6 +127,8 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
             continue
         if elem.VR in {"DA", "DT", "TM"}:
             dates[path] = (elem.VR, uid_values(elem))
+        if elem.keyword in RT_TEXT_KEYWORDS:
+            rt_text[path] = (elem.VR, elem.keyword, text_values(elem))
         if elem.VR == "UI":
             kind = uid_kind(elem)
             if kind == "entity":
@@ -140,8 +144,7 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
             or int(elem.tag) in _CLINICAL_BINARY_TAGS
             or elem.keyword in _CLINICAL_TEXT
             or (
-                str(ds.get("SOPClassUID", "")) == VIEWRAY_RT_PLAN_STORAGE
-                and elem.VR == "SQ" and elem.tag.group in {0x300A, 0x300C}
+                elem.VR in {"SQ", "CS"} and elem.tag.group in RT_GROUPS
             )
         ):
             clinical[path] = normalized
@@ -166,4 +169,5 @@ def capture_snapshot(ds: Dataset) -> Snapshot:
         beam_names=beams,
         neutral_beam_names=neutral_beams,
         identifiers=identifier_tokens(ds),
+        rt_text=rt_text,
     )

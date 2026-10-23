@@ -1,4 +1,4 @@
-# Metadata policy and privacy review
+# Metadata policy and privacy review — 0.2.0
 
 OpenDICOM De-ID implements a documented metadata transformation for research and
 teaching exports. It does **not** claim DICOM confidentiality-profile conformance,
@@ -30,13 +30,14 @@ code is written.
 | Technical UIDs | Explicitly recognized class, syntax, and other technical identifiers are preserved, except for the narrowly scoped ViewRay reference-class correction described below. |
 | Private attributes | Removed, including private creators, before value conversion whenever possible. There is no private-tag retention option. |
 | Selected equipment and material text | `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`, `TreatmentMachineName`, `FluenceModeID` and `MaterialID` are retained unless they match known identifiers from the batch. Matches become `ANONYMIZED` and produce a value-free warning. |
-| Beam names | User-defined names are replaced by neutral labels such as `BEAM-1`, based on the unchanged beam number. Original beam labels are not retained. |
-| Other ordinary text | Nonempty text becomes `ANONYMIZED`, or is removed under the baseline rules. ROI, study and protocol labels may lose meaningful names. Serial numbers, institution details, descriptions and plan labels remain scrubbed. Numeric references remain intact. |
+| Clinical RT labels and descriptions | The default `clinical` policy retains an explicit allowlist, including ROI/beam/plan names, prescription descriptions and notes, after removing spans matching known identifiers. The optional `strict` policy replaces or removes this text and uses neutral beam labels such as `BEAM-1`. |
+| Staff, institution and device identifiers | Person-name fields, hospital details and serial numbers remain removed or scrubbed. Known values are also used to screen retained text. |
+| Other ordinary text | Nonempty text outside the clinical/equipment allowlists and coded exceptions becomes `ANONYMIZED`, or is removed under the baseline rules. Study and series descriptions remain scrubbed. Numeric references remain intact. |
 | Coded meanings and units | Code values, coding scheme identifiers/versions, code meanings and rescale units are retained when their containing sequence is retained. These require review for local codes or identifying content. |
 | Dates and times | Cleared by default. Optional date shifting uses a nonzero offset consistent for a patient within the batch. |
 | History and signatures | Original/modified/encrypted attributes, digital signatures and related provenance containers are removed. |
 | Graphics and icons | Standalone overlay/curve groups, graphic annotations and icon images are removed. Embedded pixel annotations are not detected or removed. |
-| Clinical arrays | Pixel bytes, geometry and retained RT numerical arrays are not intentionally changed. Validation compares selected attributes. |
+| Clinical arrays and sequence structure | Pixel bytes, geometry and retained RT numerical arrays are not intentionally changed. Validation compares selected numeric values and retained RT sequence item counts at their original paths. |
 | File meta | Rebuilt by the engine with the output instance/class and preserved transfer syntax. The preamble is replaced. |
 
 Sequence items containing live entity references are retained and individually
@@ -59,8 +60,8 @@ option is explicitly enabled. This option does not relax metadata scrubbing or
 allow other private storage classes.
 
 This mode is not validated for independent dose reconstruction. The six selected
-public text fields use the screening policy below, but other public text remains
-subject to scrubbing. Retaining selected text, numeric parameters and pixels does
+equipment fields and curated clinical RT fields follow the text policies below;
+other public text remains subject to scrubbing. Retaining text, numeric parameters and pixels does
 not establish preservation of all inputs needed by an external dose calculator.
 A vendor-specific private retention policy would need documented field meanings,
 identification risks, and reference handling. No such policy is implemented for
@@ -102,45 +103,75 @@ clinical-completeness limitations remain unchanged.
 
 ## Machine and beam text
 
-Version 0.1.6 replaces blanket scrubbing of six public technical text fields with
-an explicit allowlist: `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
-`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. These fields can identify
-equipment or select a model needed to interpret public treatment data. The rule
-applies at every retained sequence depth, with the same behavior for standard
-and explicitly supported private storage classes.
+Version 0.2.0 defaults to `text_policy="clinical"`: **Preserve clinical names
+and descriptions** in the GUI. It retains an explicit public RT text allowlist
+at every retained sequence depth. This includes `ROIName`, `ROIDescription`,
+`BeamName`, `BeamDescription`, plan and structure-set labels, prescription and
+dose-reference descriptions, `PrescriptionNotes`, and selected treatment,
+setup, accessory and material labels. The complete field list is in
+[`RT_TEXT_KEYWORDS`](../src/opendicom_deid/core/rt_text.py). This is not a rule
+to retain arbitrary text merely because it appears in an RT object.
 
-Before transforming files, the engine gathers known patient names, identifiers
-and entity/reference UIDs across the batch, including clinical-trial subject and
-subject-reading identifiers. It screens allowlisted text against these values
-using normalization for case, punctuation and diacritics. Longer tokens are
-matched within text. Short identifiers match complete delimited components, so
-a patient ID of `42` matches `LINAC-42`. A short numeric `StudyID` must match the
-whole field instead, to avoid incidental matches in software version numbers.
-When a match is found, the affected value becomes `ANONYMIZED` and a fixed
-warning is reported without source values. This bounded check cannot identify
-arbitrary names, aliases, identifiers absent from the known fields, or every
-encoding.
-Retained text and machine labels still require review locally; device identity
-can also link a dataset to a particular site.
+Before transforming files, the engine gathers identifiers across the complete
+batch: all public person-name (`PN`) fields, including patient and staff names;
+selected patient, study, accession and clinical-trial identifiers; entity and
+reference UIDs; institution names, addresses and department names; station and
+serial identifiers; and date/date-time (`DA`/`DT`) values. Name components and
+selected distinctive organization-name components are included. These values
+stay in memory and are not written to reports.
 
-`BeamName` is not on that allowlist. It is a user-defined name and is replaced by
-`BEAM-<BeamNumber>` for a valid beam number, with a compact `B<number>` form for
-long numbers to fit the field's length limit. Empty names stay empty; a name
-without a usable beam number becomes `ANONYMIZED`. Distinct valid beam numbers keep
-distinct labels without preserving arbitrary source names. Beam numbers and their
-references, control points, meterset weights, geometry, and MLC data retain the
-existing numerical and reference checks. Output verification compares the exact
-expected equipment text and generated beam labels with the saved files, including
-values that identifier screening required the policy to scrub.
+Clinical text is normalized for case, punctuation and diacritics for matching.
+Matching source spans are removed from the original text while unrelated
+clinical words remain. A fully removed or punctuation-only result becomes
+`ANONYMIZED`. Longer tokens can match within words; short identifiers generally
+need delimited components. A short numeric `StudyID` must match the whole field
+to avoid incidental matches in version numbers. Screening can also remove a
+clinical substring that happens to match a known identifier: review altered
+labels before downstream use.
+
+The optional `text_policy="strict"` (**Scrub clinical names and descriptions**;
+CLI `--text-policy strict`) uses the previous broad text scrubbing for those
+fields. Beam names become `BEAM-<BeamNumber>`, or a compact `B<number>` for long
+numbers. Empty names stay empty; names without a usable beam number become
+`ANONYMIZED`. Strict mode keeps numeric parameters, references and retained
+sequence structure, including prescription-note sequence item structure while
+scrubbing its text. It does not disable the equipment exceptions below.
+
+In both modes, the six equipment fields introduced in 0.1.6 remain explicitly
+allowed: `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
+`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. If any known identifier
+matches, the whole affected equipment value becomes `ANONYMIZED`. Unlike the
+clinical span policy, it does not construct a partially changed machine/model
+identifier. Beam numbers and references, control points, meterset weights,
+geometry and MLC arrays retain their numerical and relationship checks.
+
+The independent output verifier compares exact expected equipment text in both
+modes, exact expected clinical RT text in clinical mode, and the appropriate
+beam-label transformation. Retained RT sequence item counts and selected
+numeric parameters are compared at their sequence paths. A warning records
+retained text requiring review; another records known-identifier removal without
+revealing the removed values.
+
+These checks cannot identify arbitrary names, aliases, identifiers absent from
+the known source fields, alternate date spellings or every encoding. Dedicated
+identifier fields are still removed or pseudonymized, but preserving useful
+free text does not prove that it is anonymous. Review retained labels and notes
+locally; device identity can also link a dataset to a particular site. Strict
+mode reduces retained clinical text but does not replace a privacy review.
 
 The [DICOM RT Beams module](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.8.14.html)
 distinguishes beam numbers, user-defined names, and equipment parameters. The
 [Retain Device Identity Option](https://dicom.nema.org/medical/dicom/current/output/chtml/part15/sect_E.3.8.html)
 recognizes both the analytical value and privacy implications of retaining device
 information. This narrower application policy does not implement or claim
-conformance to that option: serial numbers and other device-identifying fields
-outside the allowlist remain scrubbed. It also does not establish clinical
+conformance to that option: serial numbers and other identifiers outside the
+explicit text exceptions remain scrubbed. It also does not establish clinical
 completeness or suitability for independent dose reconstruction.
+
+Reprocess the original export when changing policy. Names already replaced by
+`ANONYMIZED` cannot be recovered. Slicer reader and database problems are
+separate from text retention; see [the Slicer guide](slicer.md). The application
+does not invent missing contours, constraints or treatment-system export data.
 
 ## Dates and quantitative uses
 

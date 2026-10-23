@@ -173,6 +173,7 @@ def process_batch(
                 ds, pseudonym=pseudonym, uid_mapping=uid_map,
                 date_mode=options.date_mode, date_offset_days=offset,
                 known_identifiers=identifiers,
+                text_policy=options.text_policy,
             )
             _reset_file_meta(ds)
             parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")

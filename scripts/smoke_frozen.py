@@ -89,7 +89,8 @@ def main() -> None:
                 ds.ReferencedStructureSetSequence = [reference]
                 beam = Dataset()
                 beam.BeamNumber, beam.NumberOfControlPoints = 1, 2
-                beam.BeamName = "SYNTHETIC-ID"
+                beam.BeamName = "ARC-1"
+                beam.BeamDescription = "ARC-1 for SYNTHETIC-ID"
                 beam.Manufacturer = "Example Devices"
                 beam.ManufacturerModelName = "Research Linac"
                 beam.TreatmentMachineName = "LINAC-A"
@@ -166,7 +167,8 @@ def main() -> None:
         assert saved["RTPLAN"].file_meta.TransferSyntaxUID == ImplicitVRLittleEndian
         assert saved["RTPLAN"].TreatmentMachineName == "ANONYMIZED"
         beam = saved["RTPLAN"].BeamSequence[0]
-        assert beam.BeamName == "BEAM-1" and beam.TreatmentMachineName == "LINAC-A"
+        assert beam.BeamName == "ARC-1" and beam.TreatmentMachineName == "LINAC-A"
+        assert beam.BeamDescription == "ARC-1 for"
         assert beam.Manufacturer == "Example Devices" and beam.ManufacturerModelName == "Research Linac"
         assert beam.get("DeviceSerialNumber", "") in {"", "ANONYMIZED"}
         assert beam.PrimaryFluenceModeSequence[0].FluenceModeID == "FFF"
@@ -180,7 +182,7 @@ def main() -> None:
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
         assert len({str(ds.PatientID) for ds in saved.values()}) == 1
         assert saved["CT"].PatientID != "SYNTHETIC-ID"
-    print("Packaged executable: GUI startup, equipment text, neutral beam labels, "
+    print("Packaged executable: GUI startup, equipment and clinical RT text, "
           "ViewRay opt-in, CT/RT references and pixels passed.")
 
 

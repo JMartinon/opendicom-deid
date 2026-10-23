@@ -1,8 +1,7 @@
 name: Tests
 
 on:
-  push:
-  pull_request:
+  # Local validation is the default; hosted runners consume the account quota.
   workflow_dispatch:
 
 permissions:

@@ -26,7 +26,7 @@ def _scrub(dataset):
             uid for values in capture_snapshot(dataset).entity_uids.values() for uid in values
         ), 1)
     }
-    scrub_metadata(dataset, pseudonym="SUBJECT-TEST", uid_mapping=mapping)
+    scrub_metadata(dataset, pseudonym="SUBJECT-TEST", uid_mapping=mapping, text_policy="strict")
 
 
 def _beam(number, name):
@@ -288,7 +288,9 @@ def test_saved_plan_keeps_equipment_numbers_pixels_and_references(
     assert saved["RTPLAN"].Manufacturer == plan.Manufacturer
     assert saved["RTPLAN"].ManufacturerModelName == plan.ManufacturerModelName
     assert saved["RTPLAN"].SoftwareVersions == plan.SoftwareVersions
-    assert [beam.BeamName for beam in saved["RTPLAN"].BeamSequence] == ["BEAM-1", "BEAM-2"]
+    assert [beam.BeamName for beam in saved["RTPLAN"].BeamSequence] == [
+        "Patient arc A", "Patient arc B",
+    ]
     assert all(beam.TreatmentMachineName == "LINAC-A" for beam in saved["RTPLAN"].BeamSequence)
     assert saved["RTPLAN"].ReferencedImageSequence[0].ReferencedSOPInstanceUID == saved["CT"].SOPInstanceUID
     assert validate_directory(destination).ok
@@ -330,7 +332,7 @@ def test_independent_validation_rejects_equipment_and_beam_text_tampering(
     elif tamper == "replace_nested_equipment":
         saved.BeamSequence[0].TreatmentMachineName = "LINAC-B"
     elif tamper == "replace_beam_name":
-        saved.BeamSequence[0].BeamName = "Original identity label"
+        saved.BeamSequence[0].BeamName = "Unexpected replacement label"
     else:
         del saved.BeamSequence[0].BeamName
     dicom_writer(saved, path)

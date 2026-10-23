@@ -68,23 +68,74 @@ desktop libraries must be available. No AppImage or system installer is
 provided. A build created on a newer distribution cannot be assumed to run on
 an older one. See [PyInstaller Linux portability](https://pyinstaller.org/en/stable/usage.html#making-linux-apps-forward-compatible).
 
+The local Linux workstation uses **Ubuntu 26.04, x86-64, glibc 2.43**. Its
+packages target that system; do not assume they work on Ubuntu 24.04. Build on
+the oldest supported Linux system when an older distribution is required.
+
 ## Build and release
 
-Build commands are for maintainers and developers. For macOS and Windows, run
-the matching wrapper from an activated virtual environment with Tcl/Tk:
+**Build locally by default.** Pushes, pull requests and version tags do not start
+GitHub Actions. All hosted workflows require an explicit manual run; the full
+test matrix and native packages still consume Actions minutes when requested.
+Do not dispatch them merely to make a local build.
 
-```sh
-bash scripts/build_macos.sh
-```
+Build commands are for maintainers and developers. A native build needs the
+project source and an internet connection for Python build dependencies; it
+does not need patient data. Transfer only source and packaged applications
+between build computers. The finished application continues to work offline.
+
+### Windows: build on a Windows computer
+
+1. Install 64-bit Python 3.12 or newer from [python.org](https://www.python.org/downloads/windows/),
+   including **Tcl/Tk** and the **Python launcher**.
+2. Clone the repository, or download and extract its source ZIP. Keep the whole
+   source folder together, including `src`, `tests`, `scripts`, and the licenses.
+3. Double-click **`scripts\build_windows.cmd`**. The window remains open so you
+   can read the result. A desktop session is required for the GUI checks.
+4. After **Verified Windows application** appears, share the versioned ZIP in
+   **`dist\release`**. Recipients extract it and double-click the `.exe`; only
+   the build computer needs Python.
+
+The launcher checks Python/Tcl first, creates its own `.venv-build-windows`,
+installs dependencies there, and runs lint, the synthetic tests, GUI checks,
+packaging, and checks of the packaged executable. It prefers Python 3.12 when
+creating the environment and reuses a compatible existing build environment.
+An incompatible environment is left intact; rename it before retrying.
+
+From PowerShell, the same build can be started with:
 
 ```powershell
-.\scripts\build_windows.ps1
+.\scripts\build_windows.cmd
 ```
 
-The wrappers install `.[build,dev]`, run pytest, and invoke `scripts/build.py`.
+To select a specific Python installation, pass its executable path:
+
+```powershell
+.\scripts\build_windows.cmd -Python "C:\Path\To\Python312\python.exe"
+```
+
+The CMD launcher applies its script execution setting to that PowerShell
+process only. It does not change the computer's saved execution policy.
+
+### macOS: build on the Mac
+
+Create or activate a virtual environment using a Python with working Tcl/Tk,
+then run the wrapper and local checks:
+
+```sh
+python3 -m venv .venv-build
+source .venv-build/bin/activate
+bash scripts/build_macos.sh
+python -m ruff check src tests scripts
+python scripts/smoke_gui.py
+python scripts/smoke_frozen.py
+```
+
+The macOS and Linux wrappers install `.[build,dev]`, run pytest, and invoke `scripts/build.py`.
 A missing dependency license causes the build to fail. `dist/release/` receives
 the archive and SHA-256 file. Linux interpreter selection and Tk checks are
-described below.
+described below. Build each macOS architecture on a matching host/interpreter;
+an Apple Silicon build does not also create an Intel build.
 
 ### Launch after a local build
 
@@ -145,11 +196,15 @@ Use the selected build environment's Python for `scripts/smoke_gui.py`; on a
 headless Ubuntu host, install `xvfb` and use, for example:
 
 ```sh
+.venv-build-linux/bin/python -m ruff check src tests scripts
 xvfb-run -a .venv-build-linux/bin/python scripts/smoke_gui.py
 xvfb-run -a .venv-build-linux/bin/python scripts/smoke_frozen.py
 ```
 
 If the wrapper reused an existing virtual environment, use its Python instead.
+An SSH build on a Linux workstation uses the same commands in its source
+checkout. Retrieve the resulting `dist/release/` archive and checksum; keep
+clinical files out of the source checkout and build transfer.
 
 ### Release preparation
 
@@ -159,9 +214,12 @@ and the checked-in Tcl/Tk notices. Audit additional native-library notices when
 changing Python distributions or adding dependencies. Build environments should
 be clean, with no patient files or optional clinical data packages installed.
 
-GitHub Actions test and build jobs contain synthetic tests only. Tagging a
-matching package version (for example `v0.1.7`) produces a **draft prerelease**.
-Review artifacts before publishing the draft. Signing and notarization require
+GitHub Actions test and build jobs contain synthetic tests only. Creating a
+version tag does **not** build or release anything. To spend hosted minutes on
+a draft prerelease deliberately, start **Draft versioned release** manually
+against a matching version tag; that workflow builds all four native packages.
+Alternatively, upload locally built archives and checksums when preparing a
+release. Review artifacts before publishing. Signing and notarization require
 separately configured credentials and are not part of these workflows.
 
 ## Acceptance checks before distribution
@@ -170,7 +228,7 @@ separately configured credentials and are not part of these workflows.
 2. Launch the extracted artifact on a clean computer without Python.
 3. Scan and process the synthetic RT reference chain; read every validation
    result and confirm output counts, reference integrity, and unchanged pixels.
-   For version 0.1.7, also exercise the synthetic ViewRay reference-class
+   Also exercise the synthetic ViewRay reference-class
    correction with the research option enabled and check its explicit warning.
 4. Verify cancellation, invalid output directories, report export, and About
    license viewing. Reports must use a new filename outside input.
@@ -181,4 +239,5 @@ separately configured credentials and are not part of these workflows.
 
 A successful build is not a privacy or clinical validation. Windows, Intel
 macOS, and Ubuntu native artifacts cannot be exercised from an Apple Silicon
-macOS development host; their actual CI and clean-machine results are required.
+macOS development host; validate them on the corresponding operating system,
+using local computers or a deliberately requested CI run.

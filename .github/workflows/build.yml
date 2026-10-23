@@ -1,6 +1,7 @@
 name: Native desktop builds
 
 on:
+  # Never package automatically on a push or tag. Native local builds are preferred.
   workflow_dispatch:
   workflow_call:
 

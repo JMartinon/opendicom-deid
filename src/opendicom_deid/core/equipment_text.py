@@ -29,6 +29,12 @@ _IDENTIFIER_KEYWORDS = frozenset({
     "RequestedProcedureID", "MedicalRecordLocator", "PatientBirthDate",
     "PatientAddress", "PatientTelephoneNumbers", "PatientTelecomInformation",
     "ClinicalTrialSubjectID", "ClinicalTrialSubjectReadingID",
+    "InstitutionName", "InstitutionAddress", "InstitutionalDepartmentName",
+    "StationName", "DeviceSerialNumber", "SourceSerialNumber",
+})
+_GENERIC_ORGANIZATION_WORDS = frozenset({
+    "hospital", "clinic", "center", "centre", "medical", "university", "of", "the", "and",
+    "health", "cancer", "institute", "department", "radiation", "oncology", "treatment",
 })
 
 
@@ -61,19 +67,27 @@ def identifier_tokens(ds: Dataset) -> frozenset[IdentifierToken]:
     """Collect known identifiers before mutation, including nested and historical ones."""
     tokens: set[IdentifierToken] = set()
     for _, _, element in _public_elements(ds):
-        if element.VR == "PN" or element.keyword in _IDENTIFIER_KEYWORDS or (
+        if element.VR in {"PN", "DA", "DT"} or element.keyword in _IDENTIFIER_KEYWORDS or (
             element.VR == "UI" and uid_kind(element) == "entity"
         ):
             for value in text_values(element):
                 normalized = _normalized(value)
                 if normalized:
                     tokens.add((normalized, element.keyword == "StudyID" and normalized.isdecimal()))
+                if element.VR == "DT" and len(normalized) >= 8:
+                    tokens.add((normalized[:8], False))
                 if element.VR == "PN":
                     # All alphabetic/ideographic/phonetic representations and
                     # name components, including reversed order and separators.
                     tokens.update(
                         (part, False) for raw in re.split(r"[\W_]+", value)
                         if (part := _normalized(raw))
+                    )
+                elif element.keyword in {"InstitutionName", "InstitutionalDepartmentName"}:
+                    tokens.update(
+                        (part, False) for raw in re.split(r"[\W_]+", value)
+                        if len(part := _normalized(raw)) >= 3
+                        and part not in _GENERIC_ORGANIZATION_WORDS
                     )
     return frozenset(tokens)
 

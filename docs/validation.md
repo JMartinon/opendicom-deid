@@ -1,8 +1,10 @@
-# Validation evidence and remaining acceptance work
+# Validation evidence and remaining acceptance work — 0.2.0
 
 This document describes implementation evidence, not certification or clinical
-acceptance. All test objects are generated in temporary directories from
-synthetic values. No original ViewRay or other patient dataset was used.
+acceptance. All automated test objects are generated in temporary directories
+from synthetic values. No patient dataset is included in the repository or test
+fixtures. Limited read-only troubleshooting of an already anonymized export is
+separate from the automated evidence and does not constitute clinical acceptance.
 
 ## Radiotherapy regression
 
@@ -45,8 +47,8 @@ Local inspection supplied by the user identified the exact class
 Endian. The previous standard-only class list caused the reported rejection.
 The user identified the exporting system as MRIdian A3i (UDI-PI) **5.5.4.14**;
 this records the reported environment, not a tested compatibility claim.
-No patient dataset was transferred or used here. No public vendor specification
-for this class was located, so its similarity to a standard UID is not treated
+No original patient dataset was used to develop the initial class support.
+No public vendor specification for this class was located, so its similarity to a standard UID is not treated
 as proof of equivalence. [DICOM PS3.5 Section 9](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/chapter_9.html)
 prohibits inferring semantics from a UID's suffix.
 
@@ -55,8 +57,10 @@ documents that **Export MRIdian RT Plan** is available after selecting **Export
 RT Plan**. It does not specify the resulting SOP classes, the private attributes,
 or whether the option adds or replaces an object. Unchecking it is therefore not
 a verified way to obtain a standard plan or avoid this rejection. A matching
-DICOM conformance statement/private data dictionary and export specification
-remain necessary to define a policy that preserves reconstruction inputs.
+DICOM conformance statement and export specification would help establish which
+reconstruction inputs the export provides. A private SOP class does not itself
+prove that private attributes are present in a particular file; private fields,
+when present, need their own documented handling policy.
 
 Version 0.1.4 recognizes only this exact private class and offers an explicit,
 default-off **ViewRay public-data research export** option. It keeps the class
@@ -79,11 +83,11 @@ the required public content and the inconsistencies listed above. They do not
 establish completeness: for example, acceptance does not require fraction-group
 beam metersets or a complete MLC description.
 
-Independent dose reconstruction is not validated. Since version 0.1.6, the
-metadata policy retains selected public machine, model, software, material and
-fluence-mode text unless it matches known identifiers in the batch. Saved output
-is checked against the text expected after that screening. Other text still
-undergoes scrubbing, and all private attributes are removed. Supporting
+Independent dose reconstruction is not validated. The equipment-field exceptions
+introduced in 0.1.6 still apply. Version 0.2.0 also retains curated clinical RT
+labels and descriptions by default, with known-identifier spans removed. Saved
+output is compared with the exact expected text transformation; optional strict
+mode scrubs the clinical text. All private attributes are removed. Supporting
 reconstruction requires defined inputs for the intended calculation workflow,
 appropriate vendor documentation, and validation that the relevant clinical
 information survives de-identification. Selected preservation checks alone do
@@ -135,30 +139,41 @@ inputs for independent dose reconstruction.
 
 ## Other automated checks
 
-### Equipment text and neutral beam labels
+### Clinical text, equipment fields and strict mode
 
-Version 0.1.6 preserves six explicitly selected public fields: `Manufacturer`,
-`ManufacturerModelName`, `SoftwareVersions`, `TreatmentMachineName`,
-`FluenceModeID`, and `MaterialID`. Known names, identifiers and entity/reference
-UIDs from the whole batch are screened against those values before transformation,
-including clinical-trial subject and subject-reading identifiers. Case,
-punctuation and diacritic differences are normalized. Longer tokens match within
-text; short identifiers match delimited components, except that short numeric
-`StudyID` values match only the whole field to avoid software-version collisions.
-Matches become `ANONYMIZED` and produce fixed messages without revealing source values.
-This is a bounded screen, not a privacy clearance for retained free text.
+Version 0.2.0 defaults to preserving an explicit list of public RT names,
+descriptions and prescription notes. Source-known identifier spans are removed,
+retaining unrelated clinical words. The batch screening set includes patient
+and staff person-name fields and components, selected patient/study identifiers,
+entity/reference UIDs, institution information, serial numbers, and DA/DT dates.
+Normalization handles case, punctuation and diacritics. The optional strict
+policy restores broader clinical-text scrubbing and neutral beam labels.
 
-Original `BeamName` values are replaced by labels based on the unchanged beam
-numbers, such as `BEAM-1`. This preserves distinct beam labels without trusting
-user-defined names. Numeric beam and control-point values, MLC geometry, pixels
-and the UID reference graph remain covered by their existing checks.
+The six equipment exceptions introduced in 0.1.6 remain in both modes:
+`Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
+`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. An identifier match
+neutralizes the whole equipment value rather than deleting a substring from a
+machine/model identifier. Short numeric `StudyID` values require a whole-field
+match to avoid software-version collisions.
 
-Source-to-output verification compares expected retained or scrubbed equipment
-text and neutral beam labels at their sequence locations. This is additional
-preservation evidence; it does not validate all downstream treatment semantics.
-The field selection and privacy limits are documented in the
-[machine and beam text policy](confidentiality.md#machine-and-beam-text), with
-links to the DICOM RT Beams module and Retain Device Identity Option.
+`tests/test_rt_text.py` exercises retained ROI/beam/plan labels, clinical
+descriptions, prescription notes and numeric constraints; removal of patient,
+staff and institution identifiers; cross-file screening; Unicode matching;
+and strict-mode behavior. Linked objects verify that contour coordinates,
+numeric beam data, prescription numbers and references remain consistent.
+Adversarial output changes to clinical text, prescription numbers and retained
+RT sequence item counts and coded constraint types must fail validation. The standalone validator reads
+the saved text-policy marker, but cannot prove source-to-output equivalence
+without the source snapshots.
+
+Source-to-output verification compares exact expected equipment text in both
+modes, clinical RT text in clinical mode, and the selected beam-label
+transformation at their sequence locations. It also compares selected numeric
+metadata, pixels and retained RT sequence item counts. This is preservation
+evidence for the implemented scope, not a privacy clearance or proof of complete
+dose-reconstruction inputs. Unknown identities can remain in free text, and
+coincidental matches can alter a useful label. See the
+[machine and beam text policy](confidentiality.md#machine-and-beam-text).
 
 ### Read-only identifier screening
 
@@ -267,9 +282,10 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 - Readability means strict metadata parsing, public value-representation checks,
   and selected structural checks. It is not exhaustive DICOM IOD conformance.
-- Clinical preservation compares selected numeric metadata and byte fingerprints
-  at their sequence paths, plus the expected screened equipment text and neutral
-  beam labels. It does not verify treatment-plan clinical correctness.
+- Clinical preservation compares selected numeric metadata, byte fingerprints
+  and retained RT sequence item counts at their sequence paths, plus the exact
+  expected equipment/clinical text and beam-label transformation for the selected
+  policy. It does not verify treatment-plan clinical correctness or completeness.
 - Byte-identical copies of an instance share their replacement UID. Non-identical
   files with the same original instance UID are rejected conservatively, even
   if the difference might only be a harmless alternate representation.
@@ -290,23 +306,61 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
-On October 21, 2026, all **349 tests passed** locally on both Python 3.12.14 and
-Python 3.14.7. Ruff reported no errors. The suite includes the full 661-object
+For version 0.2.0 on October 23, 2026, all **423 tests passed** locally on
+Python 3.12.14 and Python 3.14.7; Ruff reported no errors. The suite includes
+clinical/strict text policies, identifier screening, prescription constraints,
+RT sequence and coded-value preservation, and backward-compatible standalone
+validation of the exact legacy v2 strict-policy marker. Unknown or mixed markers
+are rejected. The GUI smoke check exercises both text modes and their option
+forwarding using synthetic data.
+
+For version 0.1.7 on October 21, 2026, all **349 tests passed** locally on both
+Python 3.12.14 and Python 3.14.7. Ruff reported no errors. That suite included the full 661-object
 regression described above, strict parser failures, transactional cleanup, and
 an isolated process with socket connections blocked. Forty equipment-text tests
 cover retained values, neutral beam labels, cross-file identifier matches,
 short identifiers, and deliberate output tampering. Twenty-two reference-class
 tests cover the narrow correction, identity scope, duplicate targets, safe
 diagnostics, unchanged source content, and output tampering. Local GUI smoke
-checks pass.
+checks passed. This is historical evidence; it is not a test count for 0.2.0.
 
-Local validation is performed on Apple Silicon macOS. Native GitHub Actions
-workflows provide separate Windows x86-64, macOS ARM64/Intel, and Ubuntu x86-64
-test/build jobs. Consult their actual results; workflow configuration alone is
-not evidence that an artifact works.
+Builds now run locally by default. The **Tests**, **Native desktop builds** and
+**Draft versioned release** workflows require deliberate manual initiation;
+pushes, pull requests and tags no longer spend hosted minutes automatically.
+The optional native matrix still covers Windows x86-64, macOS ARM64/Intel and
+Ubuntu x86-64. Consult actual test/build results; configuration alone is not
+evidence that an artifact works.
+
+The local Linux workstation uses Ubuntu 26.04 and glibc 2.43. Its native artifact
+must not be assumed compatible with an older distribution. The optional Ubuntu
+24.04 hosted build has an older baseline; Linux system libraries are not fully
+bundled. Windows uses a native local build through `scripts/build_windows.cmd`,
+with an isolated Python 3.12+ environment and Tcl/Tk. See
+[distribution and local-build instructions](distribution.md).
+
+### Slicer troubleshooting evidence
+
+Read-only investigation separated the reported failures into the current
+SlicerRT reader's unsupported private plan class, a legacy database-setting
+lookup, and empty contour entries. It did not change clinical files or prove
+that the original export contained those empty entries. It also did not validate
+private-plan beam loading or dose reconstruction. See [the Slicer guide](slicer.md)
+for reader selection and the reversible database-setting workaround.
+
+The compatibility helper has 15 focused tests for validating an open database,
+preserving the original setting through repeated application, restoring missing
+and existing values, refusing incomplete backups and suppressing exception
+details. On October 23, 2026, the installed Slicer 5.13 also passed a runtime
+smoke check with temporary settings and an empty temporary database. Existing
+user settings and patient files were untouched. This verifies the helper's
+actual Qt/CTK interfaces, not SlicerRT clinical import acceptance.
+
+Clinical labels scrubbed by older releases cannot be reconstructed from their
+output. Rerun the original export with the new text policy before assessing
+structure and plan labels in the intended viewer.
 
 Before distributing this initial release, open the extracted artifact on a clean
 machine without Python, test the synthetic RT outputs in the intended viewer,
-and check representative authorized datasets locally. Slicer/SlicerRT and real
-ViewRay acceptance testing have not been performed here. Every dataset still
+and check representative authorized datasets locally. Full Slicer/SlicerRT and
+ViewRay clinical acceptance remains outstanding. Every dataset still
 needs privacy review, including pixels, coded/free text, and recognizable anatomy.

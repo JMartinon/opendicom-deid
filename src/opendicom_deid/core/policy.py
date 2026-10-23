@@ -28,10 +28,12 @@ from .equipment_text import (
     neutral_beam_name,
     text_values,
 )
+from .rt_text import RT_TEXT_KEYWORDS, clean_rt_values
 from .uid_mapper import uid_kind
 
 DateMode = Literal["remove", "shift"]
-POLICY_NAME = "OpenDICOM De-ID metadata policy v2"
+TextPolicy = Literal["clinical", "strict"]
+POLICY_NAME = "OpenDICOM De-ID metadata policy v3"
 RULE_BASELINE = "Kitware dicom-anonymizer 2.1.0 / DICOM 2024b tables"
 
 # Code meanings and units carry clinical semantics. They are an explicit review
@@ -127,6 +129,10 @@ def should_remove_sequence(element: DataElement) -> bool:
     Validation uses this same documented boundary to distinguish removed history
     from relationships that the transformed dataset must preserve.
     """
+    # Prescription content stays structural in both modes; strict mode scrubs
+    # the text inside, while identifiers/person fields always follow their rules.
+    if element.keyword == "PrescriptionNotesSequence":
+        return False
     return is_removed_container(element) or (
         element.VR == "SQ"
         and rule_for_tag(element.tag) is not None
@@ -197,6 +203,7 @@ def scrub_metadata(
     date_mode: DateMode = "remove",
     date_offset_days: int = 0,
     known_identifiers: frozenset[IdentifierToken] = frozenset(),
+    text_policy: TextPolicy = "clinical",
 ) -> None:
     """Mutate metadata recursively without touching pixel or geometry values.
 
@@ -208,6 +215,8 @@ def scrub_metadata(
     """
     if date_mode not in {"remove", "shift"}:
         raise PolicyError("Unsupported date policy.")
+    if text_policy not in {"clinical", "strict"}:
+        raise PolicyError("Unsupported clinical text policy.")
     if date_mode == "shift" and (type(date_offset_days) is not int or not date_offset_days):
         raise PolicyError("Date shifting requires a nonzero whole-day offset.")
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", pseudonym):
@@ -271,6 +280,9 @@ def scrub_metadata(
             if keyword in EQUIPMENT_TEXT_KEYWORDS:
                 _replace_values(element, list(cleaned_equipment_values(text_values(element), identifiers)))
                 continue
+            if text_policy == "clinical" and keyword in RT_TEXT_KEYWORDS:
+                _replace_values(element, list(clean_rt_values(text_values(element), identifiers)))
+                continue
             if keyword == "BeamName":
                 element.value = neutral_beam_name(item) if element.value else ""
                 continue
@@ -299,6 +311,7 @@ def scrub_metadata(
     dataset.DeidentificationMethod = [
         f"{POLICY_NAME}; no profile conformance claim",
         "Pixel data unchanged; privacy review required",
+        "Clinical RT text retained" if text_policy == "clinical" else "Clinical RT text scrubbed",
     ]
     dataset.LongitudinalTemporalInformationModified = "MODIFIED" if date_mode == "shift" else "REMOVED"
 
@@ -308,6 +321,7 @@ def metadata_issues(
     *,
     pseudonym: str | None = None,
     date_mode: DateMode = "remove",
+    text_policy: TextPolicy | None = None,
 ) -> set[str]:
     """Check known residual policy violations without exposing input values.
 
@@ -316,6 +330,25 @@ def metadata_issues(
     anatomy still need human assessment. UID graph checks are independent.
     """
     issues: set[str] = set()
+    method = (
+        _values(dataset["DeidentificationMethod"]) if "DeidentificationMethod" in dataset else []
+    )
+    legacy_marker = [
+        "OpenDICOM De-ID metadata policy v2; no profile conformance claim",
+        "Pixel data unchanged; privacy review required",
+    ]
+    # Older exports used strict RT text scrubbing without a separate mode marker.
+    # Recognize their exact marker only for standalone checks, never current batches.
+    legacy_strict = text_policy is None and method == legacy_marker
+    if text_policy is None:
+        text_policy = (
+            "strict" if legacy_strict or "Clinical RT text scrubbed" in method else "clinical"
+        )
+    expected_marker = legacy_marker if legacy_strict else [
+        f"{POLICY_NAME}; no profile conformance claim",
+        "Pixel data unchanged; privacy review required",
+        "Clinical RT text retained" if text_policy == "clinical" else "Clinical RT text scrubbed",
+    ]
 
     def inspect(item: Dataset) -> None:
         for tag in item.keys():
@@ -338,10 +371,7 @@ def metadata_issues(
                     issues.add("patient_pseudonym")
                 continue
             if keyword == "DeidentificationMethod":
-                if _values(element) != [
-                    f"{POLICY_NAME}; no profile conformance claim",
-                    "Pixel data unchanged; privacy review required",
-                ]:
+                if _values(element) != expected_marker:
                     issues.add("method_marker")
                 continue
             if element.VR == "UN":
@@ -366,6 +396,8 @@ def metadata_issues(
             elif keyword in EQUIPMENT_TEXT_KEYWORDS:
                 # Batch validation compares these values with the original
                 # screened values. A standalone check cannot infer old identities.
+                continue
+            elif text_policy == "clinical" and keyword in RT_TEXT_KEYWORDS:
                 continue
             elif keyword == "BeamName":
                 if text_values(element) not in {(neutral_beam_name(item),), ("",)}:

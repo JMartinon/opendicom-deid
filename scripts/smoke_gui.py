@@ -21,6 +21,7 @@ from pydicom.uid import (
     generate_uid,
 )
 
+from opendicom_deid.core.anonymizer import process_batch
 from opendicom_deid.core.models import Cancelled
 from opendicom_deid.core.scanner import scan_directory
 from opendicom_deid.core.sop_classes import VIEWRAY_RT_PLAN_STORAGE
@@ -68,6 +69,8 @@ def check_viewray_public_plan(app: App, root: Path) -> None:
     plan.Modality = "RTPLAN"
     beam = Dataset()
     beam.BeamNumber = 1
+    beam.BeamName = "Anterior field"
+    beam.BeamDescription = "6 MV photon field"
     beam.BeamType, beam.RadiationType = "STATIC", "PHOTON"
     beam.NumberOfControlPoints = 2
     beam.FinalCumulativeMetersetWeight = 1
@@ -94,6 +97,8 @@ def check_viewray_public_plan(app: App, root: Path) -> None:
     app.output_path.set(str(output))
     assert not app.settings.viewray_public_plan.get()
     assert not app.settings.options(True).allow_viewray_public_plan
+    assert app.settings.options(True).text_policy == "clinical"
+    assert app.settings.text_policy_combo.instate(["readonly", "!disabled"])
     with patch("opendicom_deid.core.scanner.scan_directory", wraps=scan_directory) as scan:
         app.scan_button.invoke()
         finish(app)
@@ -112,20 +117,48 @@ def check_viewray_public_plan(app: App, root: Path) -> None:
     with patch("opendicom_deid.core.scanner.scan_directory", wraps=scan_directory) as scan:
         app.scan_button.invoke()
         assert app.settings.viewray_check.instate(["disabled"])
+        assert app.settings.text_policy_combo.instate(["disabled"])
         finish(app)
         assert scan.call_args.kwargs["allow_viewray_public_plan"] is True
     assert app.scan_summary.get().startswith("2 DICOM files")
     assert "vendor-private fields are removed" in app.details.get("1.0", "end")
-    with patch("opendicom_deid.core.anonymizer.scan_directory", wraps=scan_directory) as scan:
+    with patch("opendicom_deid.core.anonymizer.scan_directory", wraps=scan_directory) as scan, patch(
+        "opendicom_deid.core.anonymizer.process_batch", wraps=process_batch
+    ) as process:
         app.start_button.invoke()
+        assert app.settings.text_policy_combo.instate(["disabled"])
         finish(app)
         assert scan.call_args.kwargs["allow_viewray_public_plan"] is True
+        assert process.call_args.args[2].text_policy == "clinical"
     assert app._report is not None and app._report.ok and app._report.output_count == 2
     assert any(f.code == "VIEWRAY_PRIVATE_PLAN" for f in app._report.findings)
     saved = {str(ds.Modality): ds for ds in (pydicom.dcmread(p) for p in output.rglob("*.dcm"))}
     assert saved["RTPLAN"].SOPClassUID == VIEWRAY_RT_PLAN_STORAGE
     assert saved["RTPLAN"].BeamSequence == plan.BeamSequence
     assert all(not elem.tag.is_private for elem in saved["RTPLAN"].iterall())
+    assert app.settings.text_policy_combo.instate(["readonly", "!disabled"])
+
+    strict_output = root / "viewray-strict-output"
+    app.settings.text_policy_combo.current(1)
+    app.settings.text_policy_combo.event_generate("<<ComboboxSelected>>")
+    app.update()
+    assert app.settings.options(True).text_policy == "strict"
+    app.output_path.set(str(strict_output))
+    with patch("opendicom_deid.core.anonymizer.process_batch", wraps=process_batch) as process:
+        app.start_button.invoke()
+        assert app.settings.text_policy_combo.instate(["disabled"])
+        finish(app)
+        assert process.call_args.args[2].text_policy == "strict"
+    assert app._report is not None and app._report.ok
+    strict_plan = next(
+        ds for ds in (pydicom.dcmread(p) for p in strict_output.rglob("*.dcm"))
+        if ds.Modality == "RTPLAN"
+    )
+    assert strict_plan.BeamSequence[0].BeamName == "BEAM-1"
+    assert str(strict_plan.BeamSequence[0].get("BeamDescription", "")) in {"", "ANONYMIZED"}
+    assert strict_plan.BeamSequence[0].ControlPointSequence == beam.ControlPointSequence
+    app.settings.text_policy_combo.current(0)
+    assert app.settings.options(True).text_policy == "clinical"
 
     def wait_for_cancellation(_source, _recursive, cancel, _progress, **kwargs):
         assert kwargs["allow_viewray_public_plan"] is True
@@ -144,11 +177,12 @@ def check_viewray_public_plan(app: App, root: Path) -> None:
     assert app._report is not None and app._report.status == "CANCELLED"
     assert not cancelled_output.exists()
     assert app.settings.viewray_check.instate(["!disabled"])
+    assert app.settings.text_policy_combo.instate(["readonly", "!disabled"])
     assert app.settings.viewray_public_plan.get()
     assert before == {path: hashlib.sha256(path.read_bytes()).digest() for path in source.iterdir()}
     app.settings.viewray_check.invoke()
     app.advanced_button.invoke()
-    print("GUI: ViewRay opt-in, public-plan processing, and cancellation controls passed.")
+    print("GUI: ViewRay opt-in, clinical/strict text policies, and cancellation controls passed.")
 
 
 def check_storage_inspection(app: App, source: Path) -> None:

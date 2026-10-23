@@ -1,8 +1,8 @@
 name: Draft versioned release
 
 on:
-  push:
-    tags: ['v*']
+  # Run deliberately against a version tag; creating the tag does not spend minutes.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,7 +20,8 @@ jobs:
       - name: Check tag against package version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python -c "import os,tomllib; version=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert os.environ['RELEASE_TAG']=='v'+version, 'Tag must match package version'"
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: python -c "import os,tomllib; version=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert os.environ['RELEASE_REF_TYPE']=='tag', 'Select a version tag when starting this workflow'; assert os.environ['RELEASE_TAG']=='v'+version, 'Tag must match package version'"
   build:
     needs: version
     uses: ./.github/workflows/build.yml

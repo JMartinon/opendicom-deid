@@ -32,6 +32,7 @@ from .policy import metadata_issues
 from .reader import looks_like_dicom, read_dicom
 from .reference_classes import reference_class_findings, reference_class_repairs
 from .report import Report
+from .rt_text import clean_rt_values
 from .sop_classes import (
     SUPPORTED_SOP_CLASSES,
     VIEWRAY_PLAN_REVIEW_REQUIRED,
@@ -63,7 +64,10 @@ def _metadata_findings(
     date_mode = options.date_mode if options else (
         "shift" if ds.get("LongitudinalTemporalInformationModified") == "MODIFIED" else "remove"
     )
-    policy_issues = metadata_issues(ds, pseudonym=pseudonym, date_mode=date_mode)
+    policy_issues = metadata_issues(
+        ds, pseudonym=pseudonym, date_mode=date_mode,
+        text_policy=options.text_policy if options else None,
+    )
     meta = getattr(ds, "file_meta", None)
     if (
         not meta
@@ -218,6 +222,7 @@ def validate_batch(
     identifiers = frozenset(token for record in scan.files for token in record.snapshot.identifiers)
     class_repairs = reference_class_repairs(scan.files, enabled=options.allow_viewray_public_plan)
     equipment_redacted = False
+    rt_text_redacted = False
     source_instances = {record.snapshot.sop_uid for record in scan.files}
     available_output_instances: set[str] = set()
     read_pairs: list[tuple[ExpectedOutput, Snapshot]] = []
@@ -283,10 +288,25 @@ def validate_batch(
             for path, values in source.equipment_text.items()
         }
         equipment_redacted |= expected_equipment != source.equipment_text
-        if snapshot.equipment_text != expected_equipment or snapshot.beam_names != source.neutral_beam_names:
+        if options.text_policy == "clinical":
+            expected_rt_text = {
+                path: (vr, keyword, clean_rt_values(values, identifiers))
+                for path, (vr, keyword, values) in source.rt_text.items()
+            }
+            rt_text_redacted |= expected_rt_text != source.rt_text
+            if snapshot.rt_text != expected_rt_text:
+                findings.append(_finding(
+                    "FAIL", "RT_TEXT_CHANGED",
+                    "Clinical RT labels or descriptions do not match the expected identifier removal.",
+                    output.source.file_id,
+                ))
+        expected_beams = source.neutral_beam_names if options.text_policy == "strict" else {
+            path: clean_rt_values(values, identifiers) for path, values in source.beam_names.items()
+        }
+        if snapshot.equipment_text != expected_equipment or snapshot.beam_names != expected_beams:
             findings.append(_finding(
                 "FAIL", "EQUIPMENT_TEXT_CHANGED",
-                "Equipment text or neutral beam labels do not match the expected privacy transformation.",
+                "Equipment text or beam labels do not match the expected privacy transformation.",
                 output.source.file_id,
             ))
         try:
@@ -362,6 +382,17 @@ def validate_batch(
             "Equipment text matching known source identifiers was neutralized. "
             "Check affected equipment mappings locally before downstream analysis."
         ))
+    if options.text_policy == "clinical" and any(snap.rt_text for snap in snapshots):
+        findings.append(_finding(
+            "WARNING", "CLINICAL_TEXT_REVIEW",
+            "Clinical RT names and descriptions were retained with known identifiers removed. "
+            "Review free text for identities absent from the source metadata before sharing."
+        ))
+    if rt_text_redacted:
+        findings.append(_finding(
+            "WARNING", "CLINICAL_TEXT_REDACTED",
+            "Known patient, staff, institution or source identifiers were removed from clinical RT text."
+        ))
     preexisting_missing = 0
     new_missing = 0
     for output, snapshot in read_pairs:
@@ -405,12 +436,13 @@ def validate_batch(
             "PASS", "REFERENCE_GRAPH", "All instance relationships present in the input were preserved."
         ))
     if not failures.intersection({
-        "CLINICAL_DATA_CHANGED", "EQUIPMENT_TEXT_CHANGED", "OUTPUT_UNREADABLE", "FILE_COUNT", "NO_DICOM_FILES",
+        "CLINICAL_DATA_CHANGED", "EQUIPMENT_TEXT_CHANGED", "RT_TEXT_CHANGED",
+        "OUTPUT_UNREADABLE", "FILE_COUNT", "NO_DICOM_FILES",
     }):
         findings.append(_finding(
             "PASS", "CLINICAL_PRESERVATION",
-            "Pixels and selected clinical parameters are unchanged; equipment text and neutral "
-            "beam labels match the expected privacy transformation."
+            "Pixels, retained RT sequence structure and selected clinical parameters are unchanged; "
+            "retained text matches the selected privacy policy."
         ))
     if not failures.intersection({
         "FILE_META_MISMATCH", "PRIVATE_TAGS", "RESIDUAL_METADATA", "INVALID_UID",
@@ -420,6 +452,7 @@ def validate_batch(
         "REFERENCE_CLASS_MISMATCH",
         "TRANSFER_SYNTAX_CHANGED", "DATE_POLICY",
         "EQUIPMENT_TEXT_CHANGED",
+        "RT_TEXT_CHANGED",
         "OUTPUT_UNREADABLE", "FILE_COUNT",
         "NO_DICOM_FILES",
     }):
@@ -437,6 +470,7 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
     files = sorted(directory.rglob("*") if recursive else directory.iterdir())
     snapshots: list[Snapshot] = []
     labels: list[str] = []
+    retained_clinical_text = False
     for candidate in files:
         if candidate.is_symlink():
             report.findings.append(_finding(
@@ -462,6 +496,9 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
         report.modalities[modality] = report.modalities.get(modality, 0) + 1
         snapshots.append(snapshot)
         labels.append(file_id)
+        retained_clinical_text |= bool(snapshot.rt_text) and (
+            "Clinical RT text retained" in str(ds.get("DeidentificationMethod", ""))
+        )
         report.findings.extend(_metadata_findings(ds, snapshot, file_id))
     if not report.input_count:
         report.findings.append(_finding("FAIL", "NO_DICOM_FILES", "No readable DICOM objects were found."))
@@ -470,6 +507,12 @@ def validate_directory(path: str | Path, recursive: bool = True) -> Report:
             "WARNING", "EQUIPMENT_TEXT_REVIEW",
             "Selected equipment text remains. Without the originals, known-identifier screening "
             "cannot be checked. Review custom equipment labels before sharing."
+        ))
+    if retained_clinical_text:
+        report.findings.append(_finding(
+            "WARNING", "CLINICAL_TEXT_REVIEW",
+            "Clinical RT text remains. Without the originals, known-identifier screening "
+            "cannot be checked. Review retained names and descriptions before sharing."
         ))
     graph = _graph_findings(snapshots, standalone=True, labels=labels)
     if any(f.severity == "FAIL" for f in report.findings + graph):

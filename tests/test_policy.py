@@ -203,7 +203,7 @@ def test_text_is_neutralized_and_clinical_code_exception_is_explicit():
     code.CodingSchemeDesignator = "SRT"
     code.CodeMeaning = "Tissue"
     dataset.AnatomicRegionSequence = Sequence([code])
-    apply(dataset)
+    apply(dataset, text_policy="strict")
     assert dataset.AccessionNumber == dataset.BeamName == "ANONYMIZED"
     assert dataset.PatientSex == ""
     assert "StudyDescription" not in dataset

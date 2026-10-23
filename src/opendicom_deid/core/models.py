@@ -19,6 +19,7 @@ class Options:
     date_mode: Literal["remove", "shift"] = "remove"
     organization: Literal["flat", "source"] = "source"
     allow_viewray_public_plan: bool = False
+    text_policy: Literal["clinical", "strict"] = "clinical"
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,15}", self.patient_prefix):
@@ -29,6 +30,8 @@ class Options:
             raise ValueError("Organization must be flat or source.")
         if type(self.allow_viewray_public_plan) is not bool:
             raise ValueError("The ViewRay public-data export option must be a boolean.")
+        if self.text_policy not in {"clinical", "strict"}:
+            raise ValueError("Text policy must be clinical or strict.")
 
 
 @dataclass(frozen=True)

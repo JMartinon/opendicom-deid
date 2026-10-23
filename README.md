@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.1.7 is an initial validation release.** Automated checks do not prove
+**Version 0.2.0 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -22,9 +22,11 @@ sharing it. No claim of a fully verified DICOM confidentiality profile is made.
   pseudonym consistently across studies.
 - Removes private metadata by default; offers date removal or consistent date
   shifting and preserves nested source folders with neutral names by default.
+- Preserves selected RT structure, beam, plan and prescription text by default,
+  removing spans that match known patient, staff or institution identifiers.
+  An optional strict text policy scrubs those clinical labels and descriptions.
 - Preserves selected manufacturer, model, software, machine, material and
   fluence-mode text after screening it against known identifiers in the batch.
-  Beam names become distinct neutral labels based on their beam numbers.
 - Compares input/output references, pixel bytes, geometry, and selected RT
   parameters. Pre-existing external references produce explicit findings.
 - Rejects conflicting instance duplicates and unsafe input/output locations.
@@ -64,25 +66,36 @@ their generated patient pseudonyms. Empty folders and non-DICOM files are not co
 Turn off **Preserve patient folders and subfolders** in Advanced options only if
 you want a flat output directory (CLI: `--organization flat`).
 
-### Machine and beam information
+### Preserve useful RT information
 
-Since version 0.1.6, these six public text fields are retained by default, including in
-retained sequences: `Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
-`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. It screens them against
-known patient names, identifiers and entity/reference UIDs across the complete
-batch. A matching value becomes `ANONYMIZED` and produces a warning without
-revealing the original value.
-The bounded screening accounts for differences in case, punctuation and accents;
-it cannot recognize every possible identifier, and retained text still needs
-local review.
+Version 0.2.0 defaults to **Preserve clinical names and descriptions** under
+**Advanced options → RT information**. A curated set of public RT fields keeps
+ROI names, beam names, plan labels, prescription descriptions and notes, and
+selected treatment/accessory labels. Numeric prescription constraints, contour
+coordinates, beam/control-point parameters and references retain their
+preservation checks. This does not recover information absent from the export.
 
-Original beam names are user-defined and can include patient information. They
-become neutral labels such as `BEAM-1` and `BEAM-2`, using the unchanged beam
-numbers. Beam/control-point numbers, numeric treatment parameters and references
-retain their existing preservation checks. Serial numbers, institution details,
-patient identifiers, descriptions and plan labels remain scrubbed. These changes
-do not establish completeness for dose reconstruction; see the
+Patient identifiers, birth dates, staff names, hospital details and serial
+numbers remain removed or replaced in their dedicated metadata fields. Before
+retaining clinical text, the engine removes spans matching known identifiers
+from the entire batch, including names in person-name fields, identifiers and
+entity UIDs, institution details, serial numbers and dates. Unmatched clinical
+words remain. Names and identifiers absent from those source fields can survive,
+so retained text still needs local review.
+
+Choose **Scrub clinical names and descriptions** for the more restrictive text
+policy (CLI: `--text-policy strict`). It replaces or removes those clinical
+labels and descriptions and generates neutral beam names such as `BEAM-1`.
+Both policies retain the six screened equipment fields introduced in 0.1.6:
+`Manufacturer`, `ManufacturerModelName`, `SoftwareVersions`,
+`TreatmentMachineName`, `FluenceModeID`, and `MaterialID`. A known-identifier
+match neutralizes the entire equipment value. See the
 [text policy and its limits](docs/confidentiality.md#machine-and-beam-text).
+
+**Rerun from the original export** to recover meaningful labels after an older
+version replaced them with `ANONYMIZED`; the removed names cannot be reconstructed
+from that output. For Slicer database errors, private-plan reader selection and
+empty-contour warnings, see [Importing into 3D Slicer](docs/slicer.md).
 
 ### ViewRay private RT plans
 
@@ -97,9 +110,9 @@ public-data research export**, then run **De-identify** on the complete input
 tree. This setting is off by default because proprietary treatment fields are
 removed, and a full MRIdian plan or treatment-system re-import is unsupported.
 **This mode is not validated for independent dose reconstruction.** The selected
-public machine, model, material and fluence-mode text described above is retained
-unless identifier screening requires its replacement. Other free text and any
-private attributes remain subject to removal or scrubbing. Keep the original
+public equipment text and curated clinical RT text follow the selected text
+policy described above. Other free text and all private attributes remain
+subject to removal or scrubbing. Keep the original
 export in its authorized clinical storage if future reconstruction is required.
 
 The mode requires public beam/control-point data with coherent numbers, counts,
@@ -124,8 +137,8 @@ corrected. Remaining class mismatches fail during scanning, with neutral file
 numbers and tag locations to help local investigation.
 
 Every accepted plan produces a warning about removal of proprietary fields.
-This is not verified full ViewRay support: the vendor class specification and
-real dataset have not been available for validation. All other unknown/private
+This is not verified full ViewRay support: no public specification for the class
+or complete clinical acceptance evidence is available. All other unknown/private
 storage classes remain unsupported. See [scope and evidence](docs/validation.md#viewray-private-rt-plan-research-export).
 
 CLI equivalent (for public-data research only):
@@ -176,10 +189,12 @@ Exit code zero means the inspection ran, not that privacy checks passed.
 
 ## Install a desktop build
 
-Download a prebuilt application from
-[Native desktop builds](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml).
-Open a successful run, then choose your platform under **Artifacts**. These
-packages include Python, Tcl/Tk, the application, and dependency notices.
+Use the native archive supplied by the maintainer or a published
+[release](https://github.com/JMartinon/opendicom-deid/releases). Builds are now
+made locally by default to conserve GitHub Actions minutes. Existing or manually
+requested [native build runs](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml)
+also offer platform packages under **Artifacts**. These packages include Python,
+Tcl/Tk, the application, and dependency notices.
 **End users do not need Python, a terminal, or a local build.**
 
 For Windows, select **Windows-application**. Extract the downloaded ZIP once and
@@ -204,8 +219,10 @@ release before it is available there to other repository readers.
 | Ubuntu x86-64 | Portable `.tar.gz` folder | Extract the entire folder, then open its executable |
 
 Packages are **not publisher-signed or notarized**. Windows and macOS can warn
-about an unknown developer. The Ubuntu CI package targets Ubuntu 24.04 or newer;
-glibc and desktop libraries are not completely bundled. See
+about an unknown developer. Linux glibc and desktop libraries are not completely
+bundled. The local Ubuntu 26.04 build uses glibc 2.43 and must not be assumed to
+run on older distributions. The optional Ubuntu 24.04 hosted build has a different
+runtime baseline; choose or build an artifact for the destination system. See
 [distribution instructions](docs/distribution.md) for platform requirements,
 security prompts, manual validation, and build limitations.
 
@@ -241,6 +258,7 @@ The command-line interface exposes the same engine:
 opendicom-deid scan /path/to/input
 opendicom-deid deidentify /path/to/input /path/to/output --report /path/to/report.json
 opendicom-deid deidentify /path/to/input /path/to/output --dates shift --organization source
+opendicom-deid deidentify /path/to/input /path/to/output --text-policy strict
 opendicom-deid validate /path/to/deidentified --report /path/to/validation.json
 ```
 
@@ -285,7 +303,8 @@ supported formats.
 
 ## Build native packages
 
-Run on the target operating system. On Ubuntu 24.04 or newer, install the system
+**Build locally on the target operating system.** Pushes, pull requests and tags
+do not automatically start hosted workflows. On Ubuntu 24.04 or newer, install the system
 Python GUI support once, then build with that interpreter:
 
 ```sh
@@ -301,17 +320,22 @@ virtual environment, or creates an isolated `.venv-build-linux` environment.
 See [distribution instructions](docs/distribution.md#linux-build-setup) for
 custom Python installations and headless build hosts.
 
-For macOS and Windows, use an activated virtual environment with Tcl/Tk:
+On macOS, create an isolated environment with Python 3.12 or newer and working
+Tcl/Tk, then build:
 
 ```sh
 # macOS
+python3 -m venv .venv-build
+source .venv-build/bin/activate
 bash scripts/build_macos.sh
 ```
 
-```powershell
-# Windows x86-64
-.\scripts\build_windows.ps1
-```
+On Windows, install 64-bit Python 3.12 or newer with Tcl/Tk and the Python
+launcher, then double-click **`scripts\build_windows.cmd`** in the source
+checkout. It creates an isolated `.venv-build-windows` environment, performs the
+build and checks, and keeps the window open to show the result. See
+[Windows build instructions](docs/distribution.md#windows-build-on-a-windows-computer)
+for interpreter selection and prerequisites. Only the build computer needs Python.
 
 The scripts install build dependencies, run tests, collect license notices, and
 create a package and SHA-256 checksum in `dist/release/`. Build-time dependency
@@ -330,11 +354,11 @@ files. Keep the entire `dist/OpenDICOM-De-ID/` directory together, including
 in `dist/release/` and extract the whole archive before opening the application.
 The build script prints the full launch and archive paths when it finishes.
 
-The **Tests** workflow checks Python 3.12 and 3.14 on native operating systems.
-**Native desktop builds** can be run manually. Pushing a matching version tag,
-for example `v0.1.7`, runs native builds and creates a **draft prerelease**. The
-draft allows artifact testing before a maintainer deliberately publishes it.
-No workflow changes repository visibility.
+The **Tests**, **Native desktop builds** and **Draft versioned release** workflows
+are manually initiated. A deliberate draft-release run against a matching tag,
+for example `v0.2.0`, builds the native packages and creates a draft prerelease;
+creating or pushing the tag alone does neither. Hosted runs still consume
+Actions minutes. No workflow changes repository visibility.
 
 ## Create the private GitHub repository
 
@@ -367,9 +391,10 @@ the application and distribution artifacts have been reviewed and validated.
 - Date shifting preserves intervals and may preserve identifying patterns.
 - Original files must remain stable during processing. Large datasets can take
   time, and cancellation waits for a safe checkpoint.
-- Synthetic regression tests reproduce nested RT reference failures. Real
-  ViewRay, SlicerRT, and clinical-system acceptance tests still need to be run by
-  authorized users on their own systems; no patient dataset is included.
+- Synthetic regression tests reproduce nested RT reference failures. Limited
+  Slicer troubleshooting does not establish private-plan beam compatibility or
+  clinical acceptance. Test intended downstream workflows locally with authorized
+  data; no patient dataset is included in this repository.
 
 ## License
 
