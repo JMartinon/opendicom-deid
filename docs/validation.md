@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.2.0
+# Validation evidence and remaining acceptance work — 0.2.1
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -305,6 +305,16 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
   directory beside the destination. It must not be shared as a completed result.
 
 ## Local and platform acceptance
+
+For version 0.2.1 on October 23, 2026, all **439 tests passed** locally on Python
+3.12.14 and 3.14.7; Ruff reported no errors. `tests/test_windows_file_access.py`
+adds 16 synthetic checks
+for bounded Windows lock retries, persistent errors, cancellation, privacy-safe
+diagnostics, no replay of partial writes, and source/destination rechecks before
+publication. These inject numeric Win32 errors on local test hosts; they do not
+replace native Windows verification. A user-reported 0.2.0 Windows build first
+failed in synthetic processing, then succeeded on a complete rerun. The original
+generic error did not identify the failing operation or establish the cause.
 
 For version 0.2.0 on October 23, 2026, all **423 tests passed** locally on
 Python 3.12.14 and Python 3.14.7; Ruff reported no errors. The suite includes

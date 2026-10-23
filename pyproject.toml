@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opendicom-deid"
-version = "0.2.0"
+version = "0.2.1"
 description = "Simple, offline, cross-platform DICOM de-identification."
 readme = "README.md"
 requires-python = ">=3.12"

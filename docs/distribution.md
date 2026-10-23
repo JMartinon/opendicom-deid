@@ -102,6 +102,20 @@ packaging, and checks of the packaged executable. It prefers Python 3.12 when
 creating the environment and reuses a compatible existing build environment.
 An incompatible environment is left intact; rename it before retrying.
 
+If a Windows build fails once during synthetic processing but succeeds on a
+complete rerun, the failure was intermittent. The pip upgrade notice is not a
+build error. Do not bypass failed checks; use the executable only after the
+launcher reports **Verified Windows application**.
+
+Since 0.2.1, the engine briefly retries Windows sharing/lock conflicts when
+opening a new output file, publishing the validated directory, or cleaning up
+incomplete output. Publication and cleanup also retry Windows access-denied
+errors, which can result from open handles. Retries do not change permissions
+or replay partial DICOM writes. Persistent errors still fail. Reports identify
+the processing stage and numeric OS error codes, without paths or raw exception
+messages. These details help distinguish an access conflict from a DICOM problem;
+an earlier generic error alone cannot establish the cause.
+
 From PowerShell, the same build can be started with:
 
 ```powershell

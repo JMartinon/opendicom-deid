@@ -25,7 +25,7 @@ def prepared_batch(tmp_path, dicom_factory, dicom_writer):
     dicom_writer(struct, source / "b.dcm")
     scan = scan_directory(source)
     report = process_batch(source, destination)
-    assert report.ok, report.to_dict()
+    assert report.ok, report.summary()
     files = sorted(destination.glob("*.dcm"), key=lambda path: path.stem.rsplit("-", 1)[1])
     expected, mapping = [], {}
     for record, path in zip(scan.files, files, strict=True):

@@ -15,6 +15,7 @@ from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRBigEndian, ExplicitVRLittleEndian, ImplicitVRLittleEndian
 
 from .diagnostics import private_diagnostics
+from .filesystem import retry_windows_file_lock, safe_error_details
 from .models import (
     Cancelled,
     ExpectedOutput,
@@ -78,7 +79,9 @@ def _reset_file_meta(ds: Dataset) -> None:
 def _write(ds: Dataset, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with private_diagnostics() as diagnostics:
-        with target.open("xb") as stream:
+        # Only retry opening a new file. Once writing starts, any failure must
+        # abort the transaction; replaying a partially written file is unsafe.
+        with retry_windows_file_lock(lambda: target.open("xb")) as stream:
             dcmwrite(stream, ds, enforce_file_format=True)
             stream.flush()
             os.fsync(stream.fileno())
@@ -102,9 +105,11 @@ def process_batch(
     report = Report()
     staging: Path | None = None
     current_label: str | None = None
+    stage = "checking directories"
     try:
         check_cancel(cancel)
         source, destination = check_directories(input_dir, output_dir)
+        stage = "scanning input"
         scan = scan_directory(
             source, options.recursive, cancel, progress,
             allow_viewray_public_plan=options.allow_viewray_public_plan,
@@ -114,6 +119,7 @@ def process_batch(
         report.findings.extend(scan.findings)
         if not scan.ok:
             return report
+        stage = "preparing identifiers"
         class_repairs = reference_class_repairs(scan.files, enabled=options.allow_viewray_public_plan)
         uid_map = UIDMapper(
             value for record in scan.files
@@ -133,6 +139,7 @@ def process_batch(
             identity: secrets.choice((-1, 1)) * (1 + secrets.randbelow(3650))
             if options.date_mode == "shift" else 0 for identity in identities
         }
+        stage = "creating temporary output"
         destination.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix=".opendicom-incomplete-", dir=destination.parent))
         # Source grouping is reconstructed using only neutral ordinals at each level.
@@ -155,11 +162,13 @@ def process_batch(
         for index, record in enumerate(scan.files, 1):
             current_label = record.file_id
             check_cancel(cancel)
+            stage = "checking source files"
             if file_digest(record.path) != record.sha256:
                 report.findings.append(Finding(
                     "FAIL", "SOURCE_CHANGED", "An input file changed after the scan.", current_label
                 ))
                 return report
+            stage = "reading source files"
             ds = read_dicom(record.path)
             if file_digest(record.path) != record.sha256:
                 report.findings.append(Finding(
@@ -168,6 +177,7 @@ def process_batch(
                 return report
             pseudonym = pseudonyms[record.patient_key]
             offset = offsets[record.patient_key]
+            stage = "transforming metadata"
             apply_reference_class_repairs(ds, class_repairs.get(record.file_id, {}))
             scrub_metadata(
                 ds, pseudonym=pseudonym, uid_mapping=uid_map,
@@ -184,36 +194,50 @@ def process_batch(
                 parent /= pseudonym
             # Keep genuine copies, without assigning different instance UIDs or colliding paths.
             target = staging / parent / f"{ds.SOPInstanceUID}-{index:06d}.dcm"
+            stage = "writing output"
             _write(ds, target)
             expected.append(ExpectedOutput(record, target, pseudonym, offset))
             if progress:
                 progress(Progress("De-identifying", index, scan.total))
         check_cancel(cancel)
+        current_label = None
+        stage = "validating output"
         report.findings.extend(validate_batch(
             scan, expected, uid_map, options=options, cancel=cancel, progress=progress
         ))
         if any(f.severity == "FAIL" for f in report.findings):
             return report
-        # Detect newly added/removed files as well as edits before publishing.
-        inventory_findings: list[Finding] = []
-        final_paths = _paths(source, options.recursive, inventory_findings, cancel)
-        if tuple(final_paths) != scan.source_files or inventory_findings:
-            report.findings.append(Finding(
-                "FAIL", "SOURCE_CHANGED", "The input directory contents changed during processing."
-            ))
-            return report
-        for record in scan.files:
-            check_cancel(cancel)
-            if file_digest(record.path) != record.sha256:
+        def publish() -> bool:
+            nonlocal stage, current_label
+            current_label = None
+            stage = "rechecking source files"
+            # Recheck on every attempt, including after a Windows lock wait.
+            inventory_findings: list[Finding] = []
+            final_paths = _paths(source, options.recursive, inventory_findings, cancel)
+            if tuple(final_paths) != scan.source_files or inventory_findings:
                 report.findings.append(Finding(
-                    "FAIL", "SOURCE_CHANGED", "An input file changed before final validation.", record.file_id
+                    "FAIL", "SOURCE_CHANGED", "The input directory contents changed during processing."
                 ))
-                return report
-        check_directories(source, destination)
-        check_cancel(cancel)
-        if destination.exists():
-            destination.rmdir()  # Empty only: races or newly created contents cause failure.
-        staging.rename(destination)  # Same filesystem, directory-level atomic publication.
+                return False
+            for record in scan.files:
+                check_cancel(cancel)
+                current_label = record.file_id
+                if file_digest(record.path) != record.sha256:
+                    report.findings.append(Finding(
+                        "FAIL", "SOURCE_CHANGED", "An input file changed before final validation.", record.file_id
+                    ))
+                    return False
+            current_label = None
+            stage = "publishing output"
+            check_directories(source, destination)
+            check_cancel(cancel)
+            if destination.exists():
+                destination.rmdir()  # Empty only; newly created contents cause failure.
+            staging.rename(destination)  # Same filesystem, directory-level atomic publication.
+            return True
+
+        if not retry_windows_file_lock(publish, cancel=cancel, retry_access_denied=True):
+            return report
         staging = None
         report.status = "COMPLETED"
         report.output_count = len(expected)
@@ -233,19 +257,24 @@ def process_batch(
             "FAIL", "DICOM_READ", "A DICOM file could not be read safely during processing.", current_label
         ))
         return report
-    except Exception:
+    except Exception as error:
         report.findings.append(Finding(
             "FAIL", "PROCESSING_ERROR",
-            "Processing could not finish safely. Check the selected directories, file access, "
-            "supported objects and available disk space.", current_label,
+            f"Processing failed while {stage} ({safe_error_details(error)}). "
+            "Check file access, other applications using the selected folders, "
+            "and available disk space.", current_label,
         ))
         return report
     finally:
         if staging is not None:
             try:
-                shutil.rmtree(staging)
-            except OSError:
+                # Cleanup must still run after cancellation; retry temporary
+                # Windows handles without changing permissions or publishing.
+                retry_windows_file_lock(lambda: shutil.rmtree(staging), retry_access_denied=True)
+            except OSError as error:
                 report.findings.append(Finding(
                     "FAIL", "CLEANUP_FAILED",
-                    "Incomplete output could not be removed. Remove the hidden .opendicom-incomplete folder beside the output before sharing."
+                    "Incomplete output could not be removed "
+                    f"({safe_error_details(error)}). Remove the hidden "
+                    ".opendicom-incomplete folder beside the output before sharing."
                 ))
