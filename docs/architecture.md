@@ -56,6 +56,12 @@ must be disjoint and output must be new or empty. `Report.status` is
 `COMPLETED`, `FAILED`, or `CANCELLED`; `Report.ok` also requires no `FAIL`
 findings. A successful report can contain warnings requiring user review.
 
+`Options(workers=2)` enables concurrent file transforms, with a supported range
+of 1–8 and a default of 1. A script enabling multiple workers must put its call
+inside `if __name__ == "__main__":`, as required by Python's spawn process model.
+The supplied CLI and desktop entrypoints handle worker startup, including in
+frozen builds. This option does not change the metadata policy.
+
 `Options(allow_viewray_public_plan=True)` is the explicit, default-off option
 for the observed ViewRay private plan's public-data research export. The preview
 scan has a matching keyword. It never enables arbitrary private classes or
@@ -74,6 +80,20 @@ worker threads never update widgets. The controls are disabled while a job is
 active. Closing during a job requests cancellation and waits for cleanup before
 destroying the window. Exceptions shown to users use fixed text because raw
 parser exceptions and filesystem errors can contain identifying information.
+
+With parallel files enabled, that background coordinator starts a bounded pool
+of local processes for the transform pass. It assigns all output paths and
+identities before submitting work. Each child receives the same sealed UID map
+and identifier tokens once, plus minimal per-file tasks through local process
+pipes. Source records, snapshots and pixel buffers are not sent through those
+pipes. No mapping or task is written to disk or sent over the network.
+
+At most the selected number of files are in flight. Progress counts completed
+files, which may finish out of source order. Cancellation or failure stops new
+submissions, signals active workers and waits for them to exit before staging
+cleanup. Failed writes are never replayed. Full scanning, batch validation,
+source rechecks and publication remain in the coordinator. They cannot be
+bypassed by a worker reporting success.
 
 Selecting input, editing a path, and toggling recursion do not start a worker.
 The Scan input button provides an optional preview. De-identify always performs

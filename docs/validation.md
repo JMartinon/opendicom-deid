@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.2.3
+# Validation evidence and remaining acceptance work — 0.3.0
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -161,6 +161,30 @@ Packaged startup checks exercise both palettes and a visibly filled progress
 element. The scrollbar smoke check exercises native dragging, page movement,
 resizing, automatically hidden tracks and unchanged read-only text. These checks
 do not replace visual acceptance on each target platform.
+
+### Parallel file processing
+
+Version 0.3.0 adds optional local process workers for file transformation.
+The default remains one worker. Twenty-two synthetic tests in
+`tests/test_parallel.py` cover actual execution overlap in separate spawned
+processes, sequential/parallel byte equivalence with fixed parent mappings,
+cross-patient identifier screening, CT/RT references, duplicate copies, folder
+grouping and date shifting. They also exercise source changes, cancellation,
+partial writes, abrupt child termination, bounded submissions, no write replay,
+and worker shutdown before staging cleanup. Corrupting output after workers
+finish is rejected by mandatory validation.
+
+Four entrypoint checks verify worker dispatch before GUI or CLI initialization.
+The native GUI and packaged executable checks each process synthetic files with
+two workers. These are correctness checks, not evidence of a speed improvement
+for every dataset. Scanning, full validation and source rechecking remain
+sequential; active disk operations can delay cooperative cancellation.
+
+The Windows 0.2.3 build failure was caused by an oversized pytest parameter ID
+being exported through `PYTEST_CURRENT_TEST`, exceeding Windows' environment
+value limit. Version 0.3.0 gives those cases short names while retaining the
+65,537-character input test. The 53 appearance checks passed with a simulated
+Windows environment-value limit; this does not replace a native Windows build.
 
 ### Clinical text, equipment fields and strict mode
 
@@ -329,6 +353,16 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
+For version 0.3.0 on October 23, 2026, the full suite passed with **551 tests**
+on Python 3.12.14 with Tcl/Tk and **549 tests**, plus one skipped palette module,
+on Python 3.14.7 without Tcl/Tk. Three subsequent worker-failure/validation
+cases also passed on both interpreters in the final 22-test parallel suite.
+Ruff and whitespace checks passed. Native macOS GUI and packaged ARM64 checks
+passed, including two-worker processing and exit, appearance, progress,
+scrollbars, CT/RT references, pixels and the ViewRay opt-in boundary.
+Native Windows and Linux 0.3.0 verification remains outstanding. All builds and
+checks ran locally; no hosted Actions workflow was started for this update.
+
 For version 0.2.3 on October 23, 2026, **519 tests passed** locally on Python
 3.12.14 with Tcl/Tk. On Python 3.14.7 without Tcl/Tk, **517 tests passed** and the
 two-test palette module was skipped as a whole. Ruff reported no errors.
@@ -377,7 +411,7 @@ short identifiers, and deliberate output tampering. Twenty-two reference-class
 tests cover the narrow correction, identity scope, duplicate targets, safe
 diagnostics, unchanged source content, and output tampering. Local GUI smoke
 checks passed. These earlier release results are historical evidence, not
-test counts for 0.2.3.
+test counts for 0.3.0.
 
 Builds now run locally by default. The **Tests**, **Native desktop builds** and
 **Draft versioned release** workflows require deliberate manual initiation;

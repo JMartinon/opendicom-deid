@@ -43,6 +43,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           cat > release-notes.txt <<'EOF'
+          **Under development — not intended for clinical use.** These experimental builds are for research and evaluation, not diagnosis, treatment planning, treatment delivery or clinical decisions.
+
           Offline desktop builds for validation and testing. No publisher signing or notarization is performed.
 
           Extract the archive and launch OpenDICOM De-ID. Python is included. Review the distribution documentation and licenses before use.

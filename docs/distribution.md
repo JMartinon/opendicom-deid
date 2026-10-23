@@ -1,5 +1,12 @@
 # Native distribution and verification
 
+**Under active development; not intended for clinical use.** Packages are for
+research and development evaluation. Do not use them for diagnosis, treatment
+planning, treatment delivery or clinical decision-making. A successful build
+does not establish complete de-identification or preservation of every
+proprietary treatment field. Keep this notice and the license notices with
+redistributed packages.
+
 Build with Python 3.12 or newer and a working Tcl/Tk installation. PyInstaller
 must run on the target operating system; it is not a cross-compiler. Python and
 Tcl/Tk are included in the resulting desktop artifact. See the
@@ -24,12 +31,12 @@ and SHA-256 files. GitHub wraps those in an outer ZIP: extract that ZIP, then
 extract the application archive inside it. This also applies to the older
 Windows builds, which only offered **OpenDICOM-De-ID-Windows-x86_64**.
 
-This repository is private. Sign in to GitHub with an account that has
-repository access to download its builds. Actions artifacts expire after **14
-days** under this project's retention setting. Published release assets do not
-use that retention period; they remain available until removed. Draft releases
-are for maintainer review and must be published before ordinary repository
-readers can download them. See
+The repository and published release assets are public. Actions artifact
+downloads require signing in to GitHub and expire after **14 days** under this
+project's retention setting. Published release assets do not use that retention
+period; they remain available until removed. Draft releases are for maintainer
+review and must be published before other readers can download them. Check the
+version of historical hosted packages before sharing them. See
 [GitHub's artifact download instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
 
 | Target | CI runner | Package |
@@ -80,9 +87,9 @@ GitHub Actions. All hosted workflows require an explicit manual run; the full
 test matrix and native packages still consume Actions minutes when requested.
 Do not dispatch them merely to make a local build.
 
-The 0.2.3 desktop update follows OS appearance and uses consistent scrollbars.
-It uses the existing Tk runtime and local OS settings, with no additional Python
-dependency or network service. Build and check the
+Version 0.3.0 adds optional parallel file processing and retains automatic OS
+appearance and consistent scrollbars. It uses the existing runtime with no
+additional Python dependency or network service. Build and check the
 macOS package on the Mac, the Linux package on the workstation, and the Windows
 executable on a Windows computer using the commands below. Hosted builds are
 optional and are not needed for this update.
@@ -261,9 +268,13 @@ separately configured credentials and are not part of these workflows.
    scrollbar is hidden for short content and can drag/page through long content.
    Watch the visible bar and completed-file count through each processing stage;
    stage resets and animated unknown-length steps must not imply overall success.
-6. Import a synthetic output into the intended independent viewer, including
+6. Process a synthetic batch with **Parallel files** set to 1 and then 2 or 4.
+   Verify the same output counts and validation results, responsive progress,
+   cancellation and cleanup. Workers apply only to file transformation; scanning
+   and validation remain sequential. Each worker needs additional memory.
+7. Import a synthetic output into the intended independent viewer, including
    Slicer/SlicerRT if it is part of the intended workflow.
-7. Validate representative authorized datasets locally under an appropriate
+8. Validate representative authorized datasets locally under an appropriate
    review process. Never add them to the repository or release artifacts.
 
 A successful build is not a privacy or clinical validation. Windows, Intel

@@ -31,6 +31,10 @@ def parser() -> argparse.ArgumentParser:
     )
     process.add_argument("--dates", choices=["remove", "shift"], default="remove")
     process.add_argument(
+        "--workers", type=int, choices=range(1, 9), default=1,
+        help="Files to de-identify concurrently (1–8, default 1); more workers use more memory",
+    )
+    process.add_argument(
         "--text-policy", choices=["clinical", "strict"], default="clinical",
         help="Preserve screened RT names and descriptions (default), or scrub them; "
         "patient, clinician and institution identifiers are removed in both modes",
@@ -137,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
                 organization=args.organization,
                 allow_viewray_public_plan=args.viewray_public_plan,
                 text_policy=args.text_policy,
+                workers=args.workers,
             )
             report = process_batch(args.input, args.output, options, cancel=cancel)
         print(report.summary())

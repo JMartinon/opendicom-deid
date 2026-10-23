@@ -60,6 +60,28 @@ def finish(app: App) -> None:
         time.sleep(0.01)
 
 
+def check_parallel_processing(app: App, root: Path) -> None:
+    source = root / "parallel-input"
+    ds = write_synthetic_ct(source)
+    other = deepcopy(ds)
+    other.SOPInstanceUID = other.file_meta.MediaStorageSOPInstanceUID = generate_uid()
+    other.InstanceNumber = 2
+    other.save_as(source / "synthetic-second.dcm", enforce_file_format=True)
+    app.input_path.set(str(source))
+    app.output_path.set(str(root / "parallel-output"))
+    assert app.settings.workers.get() == "1"
+    app.settings.workers.set("2")
+    assert app.settings.options(True).workers == 2
+    app.start_button.invoke()
+    assert app._busy and app.settings.workers_combo.instate(["disabled"])
+    finish(app)
+    assert app._report is not None and app._report.ok
+    assert app._report.output_count == 2
+    assert app.settings.workers_combo.instate(["readonly", "!disabled"])
+    app.settings.workers.set("1")
+    print("GUI: two concurrent file workers, disabled active-job settings, and completion passed.")
+
+
 def check_progress_and_theme(app: App) -> None:
     """Observe real Tk painting while a controlled worker waits between stages."""
     phases = [
@@ -456,6 +478,7 @@ def main() -> None:
             assert app._report is not None and app._report.ok
             assert app._report.output_count == 1
             print("GUI: input changes stay idle; explicit scan and synthetic processing passed.")
+            check_parallel_processing(app, Path(temporary))
             check_viewray_public_plan(app, Path(temporary))
             check_storage_inspection(app, Path(temporary) / "inspection-input")
     finally:

@@ -136,7 +136,7 @@ def main() -> None:
         assert any(f["code"] == "VIEWRAY_PLAN_REVIEW_REQUIRED" for f in blocked_result["findings"])
         subprocess.run(
             [str(executable), "deidentify", str(source), str(output),
-             "--report", str(report), "--viewray-public-plan"],
+             "--report", str(report), "--viewray-public-plan", "--workers", "2"],
             check=True, timeout=90,
         )
         result = json.loads(report.read_text(encoding="utf-8"))
@@ -182,7 +182,8 @@ def main() -> None:
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
         assert len({str(ds.PatientID) for ds in saved.values()}) == 1
         assert saved["CT"].PatientID != "SYNTHETIC-ID"
-    print("Packaged executable: GUI startup, equipment and clinical RT text, "
+    print("Packaged executable: GUI startup, two-process de-identification and exit, "
+          "equipment and clinical RT text, "
           "ViewRay opt-in, CT/RT references and pixels passed.")
 
 

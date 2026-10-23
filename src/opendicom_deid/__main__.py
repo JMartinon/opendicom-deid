@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import sys
 
 
 def main() -> int:
+    multiprocessing.freeze_support()
     if sys.argv[1:] == ["--check-gui"]:
         from .gui.app import check_startup
 

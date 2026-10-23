@@ -20,6 +20,7 @@ class Options:
     organization: Literal["flat", "source"] = "source"
     allow_viewray_public_plan: bool = False
     text_policy: Literal["clinical", "strict"] = "clinical"
+    workers: int = 1
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,15}", self.patient_prefix):
@@ -32,6 +33,8 @@ class Options:
             raise ValueError("The ViewRay public-data export option must be a boolean.")
         if self.text_policy not in {"clinical", "strict"}:
             raise ValueError("Text policy must be clinical or strict.")
+        if type(self.workers) is not int or not 1 <= self.workers <= 8:
+            raise ValueError("Processing workers must be a whole number from 1 to 8.")
 
 
 @dataclass(frozen=True)

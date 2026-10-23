@@ -228,7 +228,8 @@ class App(tk.Tk):
         self.details_scrollbar.grid(row=0, column=1, sticky="ns", padx=(8, 0))
         self.details.configure(yscrollcommand=self.details_scrollbar.set)
         ttk.Label(
-            frame, text="Pixels are preserved. Review privacy before sharing.", style="Muted.TLabel"
+            frame, text="Research and development only. Not for clinical use. Review privacy before sharing.",
+            style="Muted.TLabel",
         ).grid(row=5, sticky="w", pady=(10, 0))
         self._set_details(
             "All processing stays on this computer.\n\n"
@@ -569,7 +570,7 @@ class App(tk.Tk):
             "Scanning, de-identifying, and validating. A completed dataset is published only after checks finish."
         )
         self.status.set(
-            "Processing locally. Cancellation waits for the current file to finish safely."
+            "Processing locally. Cancellation waits for active files to finish safely."
         )
         self._launch(
             lambda: process_batch(
@@ -712,7 +713,8 @@ class App(tk.Tk):
             window,
             padding=16,
             text=f"OpenDICOM De-ID {__version__}\nOffline DICOM de-identification\n"
-            "BSD-3-Clause · Automated checks are not proof of privacy or regulatory compliance.",
+            "BSD-3-Clause · Under development. Not intended for clinical use. "
+            "Automated checks are not proof of privacy or regulatory compliance.",
             wraplength=630,
         ).grid(row=0, sticky="ew")
         text = ThemedScrolledText(

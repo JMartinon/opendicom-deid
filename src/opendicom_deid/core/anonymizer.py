@@ -161,46 +161,77 @@ def process_batch(
         expected: list[ExpectedOutput] = []
         if progress:
             progress(Progress("De-identifying", 0, scan.total))
-        for index, record in enumerate(scan.files, 1):
-            current_label = record.file_id
-            check_cancel(cancel)
-            stage = "checking source files"
-            if file_digest(record.path) != record.sha256:
-                report.findings.append(Finding(
-                    "FAIL", "SOURCE_CHANGED", "An input file changed after the scan.", current_label
+        if options.workers > 1 and scan.total > 1:
+            from .parallel import FileTask, WorkerState, transform_parallel
+
+            # Allocate every destination in scan order, before workers start.
+            # Shared maps are sealed; workers never choose identities or paths.
+            tasks = []
+            for index, record in enumerate(scan.files, 1):
+                check_cancel(cancel)
+                pseudonym = pseudonyms[record.patient_key]
+                offset = offsets[record.patient_key]
+                parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")
+                if options.organization == "source" and len(directory_patients[record.relative_parent]) > 1:
+                    parent /= pseudonym
+                target = staging / parent / f"{uid_map[record.snapshot.sop_uid]}-{index:06d}.dcm"
+                expected.append(ExpectedOutput(record, target, pseudonym, offset))
+                tasks.append(FileTask(
+                    record.path, target, record.sha256, record.file_id, pseudonym, offset,
+                    class_repairs.get(record.file_id, {}),
                 ))
-                return report
-            stage = "reading source files"
-            ds = read_dicom(record.path)
-            if file_digest(record.path) != record.sha256:
-                report.findings.append(Finding(
-                    "FAIL", "SOURCE_CHANGED", "An input file changed during processing.", current_label
-                ))
-                return report
-            pseudonym = pseudonyms[record.patient_key]
-            offset = offsets[record.patient_key]
-            stage = "transforming metadata"
-            apply_reference_class_repairs(ds, class_repairs.get(record.file_id, {}))
-            scrub_metadata(
-                ds, pseudonym=pseudonym, uid_mapping=uid_map,
-                date_mode=options.date_mode, date_offset_days=offset,
-                known_identifiers=identifiers,
-                text_policy=options.text_policy,
+            stage = "processing files in parallel"
+            finding = transform_parallel(
+                tasks, WorkerState(dict(uid_map), identifiers, options),
+                cancel=cancel, progress=progress,
             )
-            _reset_file_meta(ds)
-            parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")
-            if options.organization == "source" and len(directory_patients[record.relative_parent]) > 1:
-                # Preserve the source hierarchy, splitting only directories whose
-                # direct files belong to different patients. Use batch pseudonyms,
-                # never patient identifiers or names from the input paths.
-                parent /= pseudonym
-            # Keep genuine copies, without assigning different instance UIDs or colliding paths.
-            target = staging / parent / f"{ds.SOPInstanceUID}-{index:06d}.dcm"
-            stage = "writing output"
-            _write(ds, target)
-            expected.append(ExpectedOutput(record, target, pseudonym, offset))
-            if progress:
-                progress(Progress("De-identifying", index, scan.total))
+            if finding is not None:
+                report.findings.append(finding)
+                return report
+        else:
+            for index, record in enumerate(scan.files, 1):
+                current_label = record.file_id
+                check_cancel(cancel)
+                stage = "checking source files"
+                if file_digest(record.path) != record.sha256:
+                    report.findings.append(Finding(
+                        "FAIL", "SOURCE_CHANGED", "An input file changed after the scan.", current_label
+                    ))
+                    return report
+                stage = "reading source files"
+                ds = read_dicom(record.path)
+                if file_digest(record.path) != record.sha256:
+                    report.findings.append(Finding(
+                        "FAIL", "SOURCE_CHANGED", "An input file changed during processing.", current_label
+                    ))
+                    return report
+                pseudonym = pseudonyms[record.patient_key]
+                offset = offsets[record.patient_key]
+                stage = "transforming metadata"
+                with private_diagnostics() as diagnostics:
+                    apply_reference_class_repairs(ds, class_repairs.get(record.file_id, {}))
+                    scrub_metadata(
+                        ds, pseudonym=pseudonym, uid_mapping=uid_map,
+                        date_mode=options.date_mode, date_offset_days=offset,
+                        known_identifiers=identifiers,
+                        text_policy=options.text_policy,
+                    )
+                    _reset_file_meta(ds)
+                if diagnostics.has_warnings:
+                    raise PolicyError("Metadata transformation produced a warning.")
+                parent = safe_parent(record.relative_parent) if options.organization == "source" else Path(".")
+                if options.organization == "source" and len(directory_patients[record.relative_parent]) > 1:
+                    # Preserve the source hierarchy, splitting only directories whose
+                    # direct files belong to different patients. Use batch pseudonyms,
+                    # never patient identifiers or names from the input paths.
+                    parent /= pseudonym
+                # Keep genuine copies, without assigning different instance UIDs or colliding paths.
+                target = staging / parent / f"{ds.SOPInstanceUID}-{index:06d}.dcm"
+                stage = "writing output"
+                _write(ds, target)
+                expected.append(ExpectedOutput(record, target, pseudonym, offset))
+                if progress:
+                    progress(Progress("De-identifying", index, scan.total))
         check_cancel(cancel)
         current_label = None
         stage = "validating output"

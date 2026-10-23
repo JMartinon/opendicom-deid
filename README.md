@@ -1,16 +1,22 @@
 # OpenDICOM De-ID
 
-Simple, offline, cross-platform DICOM de-identification.
+Offline DICOM de-identification for research and development.
+
+> **Under active development — not intended for clinical use.**
+> This experimental software must not be used for diagnosis, treatment planning,
+> treatment delivery, or clinical decision-making. Its output is not a verified
+> clinical record or a substitute for the original data.
 
 OpenDICOM De-ID is a Python desktop application for de-identifying batches of
 DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.2.3 is an initial validation release.** Automated checks do not prove
-that all identifying information has been removed, establish clinical
-suitability, or demonstrate regulatory compliance. Review every dataset before
-sharing it. No claim of a fully verified DICOM confidentiality profile is made.
+Releases are development builds for evaluation with synthetic or appropriately
+authorized research data. Automated checks do not prove that all identifying
+information has been removed or demonstrate regulatory compliance. Review every
+dataset before sharing it, including retained text, pixels and recognizable
+anatomy. No claim of a fully verified DICOM confidentiality profile is made.
 
 ## What it does
 
@@ -68,6 +74,26 @@ starts again for each stage; it is not an overall percentage or a time estimate.
 Finding files, checking references and publishing use an animated indicator
 because those steps have no file-based total. Processing is complete only when
 the final result says so, after validation and publication finish.
+
+### Parallel file processing
+
+Version 0.3.0 can de-identify several files at once within the same batch.
+Choose **Advanced options → Parallel files** and select **1**, **2**, **4** or
+**8**. The default is **1**; start with **2** or **4** on a computer with spare
+CPU and memory. The command-line equivalent is:
+
+```sh
+opendicom-deid deidentify /path/to/input /path/to/output --workers 4
+```
+
+Workers share the same batch-wide identity and UID mappings. Only file reading,
+de-identification and writing run in parallel; scanning, full validation and the
+final source recheck remain sequential. The same mandatory checks run before
+output is published. Parallel processing uses more memory and may offer little
+improvement on a slow disk or with small files. Keep the input unchanged during
+the run, and use separate output directories for separate application runs.
+
+### Output folders and identifiers
 
 Private-tag removal and validation are always enabled. A custom prefix must be a
 neutral label; do not use a patient name or original identifier. Output preserves
@@ -218,12 +244,12 @@ notices when distributing it. The separate **OpenDICOM-De-ID-Windows-x86_64**
 artifact is the versioned archive plus checksum for distribution; that artifact
 requires extracting both the outer GitHub ZIP and the inner application ZIP.
 
-The repository is private, so GitHub downloads require signing in with an
-account that has repository access. Actions artifacts are retained for **14
-days**. For a published version, use the platform archive under **Assets** on the
-[Releases page](https://github.com/JMartinon/opendicom-deid/releases); release
-assets are not subject to Actions artifact expiry. A maintainer must publish a
-release before it is available there to other repository readers.
+The source repository is public. Published
+[release assets](https://github.com/JMartinon/opendicom-deid/releases) can be
+shared with colleagues; an archive is available there only after the maintainer
+has published it. GitHub requires signing in to download Actions artifacts,
+which are retained for **14 days**. Release assets are not subject to that
+artifact expiry. Check the version before using an older hosted build.
 
 | Platform | Distribution | Opening it |
 | --- | --- | --- |
@@ -240,9 +266,9 @@ runtime baseline; choose or build an artifact for the destination system. See
 [distribution instructions](docs/distribution.md) for platform requirements,
 security prompts, manual validation, and build limitations.
 
-The repository starts **private**. A CI configuration is not evidence that a
-platform build has passed. Review the actual workflow results and test each
-downloaded artifact on a clean target machine before publishing a release.
+All packages retain the development-only status above. A CI configuration is
+not evidence that a platform build has passed. Review the actual build results
+and test each downloaded artifact on a clean target machine before distributing it.
 
 ## Develop locally
 
@@ -370,27 +396,32 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests**, **Native desktop builds** and **Draft versioned release** workflows
 are manually initiated. A deliberate draft-release run against a matching tag,
-for example `v0.2.3`, builds the native packages and creates a draft prerelease;
+for example `v0.3.0`, builds the native packages and creates a draft prerelease;
 creating or pushing the tag alone does neither. Hosted runs still consume
 Actions minutes. No workflow changes repository visibility.
 
-## Create the private GitHub repository
+## Contributing and reporting problems
 
-If the working directory has not yet been initialized or pushed, run:
+The [public repository](https://github.com/JMartinon/opendicom-deid) welcomes
+bug reports and development contributions. Clone it with:
 
 ```sh
-git init -b main
-git add .
-git diff --cached --stat
-git commit -m "Initial OpenDICOM De-ID implementation"
-gh auth login
-gh repo create opendicom-deid --private --source=. --remote=origin \
-  --description 'Simple, offline, cross-platform DICOM de-identification.' --push
-gh repo view --json nameWithOwner,visibility,url
+git clone https://github.com/JMartinon/opendicom-deid.git
+cd opendicom-deid
 ```
 
-Inspect the staged files before committing. Keep the repository private until
-the application and distribution artifacts have been reviewed and validated.
+Follow the local development and build instructions above. Include the app
+version, operating system and a minimal synthetic reproduction when reporting
+a problem. Public issues, pull requests and attachments are visible to everyone:
+**do not upload patient files, identifying logs, screenshots containing personal
+information, source paths or identity mappings.** Use the app's value-free
+inspection report where it is relevant, and review even that report before posting.
+
+Contributions should preserve offline processing, reference integrity and the
+privacy boundaries documented in [the policy](docs/confidentiality.md). Add
+synthetic regression coverage for behavior changes and run the local checks.
+Publishing the source makes collaboration possible; it does not establish
+privacy, regulatory compliance or clinical suitability.
 
 ## Limitations and privacy
 

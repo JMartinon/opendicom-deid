@@ -118,13 +118,17 @@ def test_gtk_color_preference_and_older_theme_fallback(monkeypatch, values, expe
 
 
 @pytest.mark.parametrize("contents,expected", [
-    ("[Colors:Window]\nBackgroundNormal=35,38,41\n", "dark"),
-    ("[Colors:Window]\nBackgroundNormal=239,240,241\n", "light"),
-    ("[Colors:Window]\nBackgroundNormal=999,0,0\n", None),
-    ("[Colors:Window]\nBackgroundNormal=not-a-color\n", None),
-    ("broken config", None), ("x" * 65537, None),
+    pytest.param("[Colors:Window]\nBackgroundNormal=35,38,41\n", "dark", id="dark-window"),
+    pytest.param("[Colors:Window]\nBackgroundNormal=239,240,241\n", "light", id="light-window"),
+    pytest.param("[Colors:Window]\nBackgroundNormal=999,0,0\n", None, id="out-of-range-color"),
+    pytest.param("[Colors:Window]\nBackgroundNormal=not-a-color\n", None, id="invalid-color"),
+    pytest.param("broken config", None, id="invalid-config"),
+    pytest.param("x" * 65537, None, id="oversized-config"),
 ])
-def test_kde_reads_bounded_actual_window_color(monkeypatch, tmp_path, contents, expected):
+def test_kde_reads_bounded_actual_window_color(monkeypatch, tmp_path, request, contents, expected):
+    # Pytest exports the node ID through PYTEST_CURRENT_TEST; Windows limits
+    # environment values to 32,767 characters. Keep oversized data out of IDs.
+    assert len(request.node.nodeid + " (teardown)") < 32767
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     (tmp_path / "kdeglobals").write_text(contents)
     assert appearance._kde_appearance() == expected
