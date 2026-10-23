@@ -8,9 +8,10 @@ Tcl/Tk are included in the resulting desktop artifact. See the
 ## Desktop packages
 
 End users can run the packaged application without installing Python or using
-build commands. Download a platform archive from a published version's
-[release assets](https://github.com/JMartinon/opendicom-deid/releases), when
-available, or from a successful
+build commands. Use an archive built locally by the maintainer or a published
+version's [release assets](https://github.com/JMartinon/opendicom-deid/releases),
+when available. Existing or explicitly requested hosted packages are also
+available from a successful
 [Native desktop builds run](https://github.com/JMartinon/opendicom-deid/actions/workflows/build.yml).
 
 For Windows Actions downloads, open the run's **Artifacts** section and choose
@@ -78,6 +79,12 @@ the oldest supported Linux system when an older distribution is required.
 GitHub Actions. All hosted workflows require an explicit manual run; the full
 test matrix and native packages still consume Actions minutes when requested.
 Do not dispatch them merely to make a local build.
+
+The 0.2.2 desktop update uses the existing Tk runtime for dark mode and stage
+progress; it adds no theme service or download at runtime. Build and check the
+macOS package on the Mac, the Linux package on the workstation, and the Windows
+executable on a Windows computer using the commands below. Hosted builds are
+optional and are not needed for this update.
 
 Build commands are for maintainers and developers. A native build needs the
 project source and an internet connection for Python build dependencies; it
@@ -246,9 +253,14 @@ separately configured credentials and are not part of these workflows.
    correction with the research option enabled and check its explicit warning.
 4. Verify cancellation, invalid output directories, report export, and About
    license viewing. Reports must use a new filename outside input.
-5. Import a synthetic output into the intended independent viewer, including
+5. Switch between **Dark mode** and **Light mode**, including during synthetic
+   processing. Check fields, findings, Advanced options and inspection/About
+   dialogs for readable text. Restart to verify the preference is remembered.
+   Watch the visible bar and completed-file count through each processing stage;
+   stage resets and animated unknown-length steps must not imply overall success.
+6. Import a synthetic output into the intended independent viewer, including
    Slicer/SlicerRT if it is part of the intended workflow.
-6. Validate representative authorized datasets locally under an appropriate
+7. Validate representative authorized datasets locally under an appropriate
    review process. Never add them to the repository or release artifacts.
 
 A successful build is not a privacy or clinical validation. Windows, Intel

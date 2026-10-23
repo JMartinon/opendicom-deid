@@ -9,6 +9,7 @@ import tempfile
 import time
 from copy import deepcopy
 from pathlib import Path
+from threading import Event
 from unittest.mock import patch
 
 import pydicom
@@ -22,10 +23,12 @@ from pydicom.uid import (
 )
 
 from opendicom_deid.core.anonymizer import process_batch
-from opendicom_deid.core.models import Cancelled
+from opendicom_deid.core.models import Cancelled, Progress
+from opendicom_deid.core.report import Report
 from opendicom_deid.core.scanner import scan_directory
 from opendicom_deid.core.sop_classes import VIEWRAY_RT_PLAN_STORAGE
 from opendicom_deid.gui.app import App, check_startup
+from opendicom_deid.gui.theme import current_palette
 
 
 def write_synthetic_ct(source: Path) -> FileDataset:
@@ -54,6 +57,117 @@ def finish(app: App) -> None:
         assert time.monotonic() < deadline, "The GUI worker did not finish in time."
         app.update()
         time.sleep(0.01)
+
+
+def check_progress_and_theme(app: App) -> None:
+    """Observe real Tk painting while a controlled worker waits between stages."""
+    phases = [
+        Progress("Inventory", 0, 0),
+        Progress("Scanning", 2, 4),
+        Progress("De-identifying", 1, 4),
+        Progress("Validating", 3, 4),
+        Progress("Rechecking source files", 2, 4),
+        Progress("Publishing", 0, 0),
+    ]
+    ready = [Event() for _ in phases]
+    advance = [Event() for _ in phases]
+
+    def worker():
+        for index, progress in enumerate(phases):
+            app._progress_event(progress)
+            ready[index].set()
+            assert advance[index].wait(10), "The GUI stopped responding to stage progress."
+        return Report(status="COMPLETED", input_count=4, output_count=4)
+
+    original_theme = app._theme_mode
+    try:
+        app._launch(worker, "report")
+        for index, progress in enumerate(phases):
+            deadline = time.monotonic() + 5
+            while not ready[index].is_set() or app._latest_progress._value is not None:
+                assert time.monotonic() < deadline, "Progress did not reach the main Tk thread."
+                app.update()
+                time.sleep(0.01)
+            app.update()
+            assert app._busy
+            assert app.theme_button.instate(["!disabled"])
+            if progress.total:
+                assert str(app.progress.cget("mode")) == "determinate"
+                expected = 100 * progress.completed / progress.total
+                assert float(app.progress.cget("value")) == expected
+                assert f"{int(expected)}% of this stage" in app.counts.get()
+                assert app.progress.winfo_height() >= 10
+                # The filled element must be visible, not only its numeric value.
+                width, height = app.progress.winfo_width(), app.progress.winfo_height()
+                assert "pbar" in app.progress.identify(int(width * 0.1), height // 2)
+                assert "pbar" not in app.progress.identify(int(width * 0.9), height // 2)
+                with patch("opendicom_deid.gui.app.persist_theme", return_value=True) as saved:
+                    app.theme_button.invoke()
+                    app.update()
+                    saved.assert_called_once_with(app._theme_mode)
+                assert float(app.progress.cget("value")) == expected
+                assert app.details.cget("background") == current_palette(app).surface
+                assert app._advanced_window.cget("background") == current_palette(app).background
+                assert app.progress.winfo_height() >= 10
+            else:
+                assert str(app.progress.cget("mode")) == "indeterminate"
+                assert "0 / 0" not in app.counts.get()
+            advance[index].set()
+        finish(app)
+        assert app._report.ok and float(app.progress.cget("value")) == 100
+    finally:
+        for event in advance:
+            event.set()
+        if app._theme_mode != original_theme:
+            with patch("opendicom_deid.gui.app.persist_theme", return_value=True):
+                app.theme_button.invoke()
+    print("GUI: visible stage progress, responsive theme switching, and final completion passed.")
+
+
+def check_progress_completion(app: App) -> None:
+    """Reproduce final progress arriving between the poll's two mailbox reads."""
+    def poll_once() -> None:
+        app.after_cancel(app._poll_id)
+        app._poll()
+
+    app._set_busy(True)
+    app._latest_progress.begin()
+    app._show_progress(Progress("Validating", 4, 4))
+    take = app._latest_progress.take
+
+    def finish_between_reads():
+        value = take()
+        app._progress_event(Progress("Publishing", 0, 0))
+        app._events.put(("report", Report(status="COMPLETED", input_count=4, output_count=4)))
+        return value
+
+    with patch.object(app._latest_progress, "take", side_effect=finish_between_reads):
+        poll_once()
+    for _ in range(2):
+        assert not app._busy and not app._progress_animating
+        assert str(app.progress.cget("mode")) == "determinate"
+        assert float(app.progress.cget("value")) == 100
+        assert app.counts.get() == "Processed: 4 / 4 files"
+        poll_once()
+
+    # A stopped widget can remain indeterminate. The next operation must start
+    # its timer even when changing its mode is unnecessary.
+    app.progress.configure(mode="indeterminate", value=0)
+    app.progress.stop()
+    app._set_busy(True)
+    app._latest_progress.begin()
+    app._show_progress(Progress("Inventory", 0, 0))
+    assert app._progress_animating
+    initial = float(app.progress.cget("value"))
+    deadline = time.monotonic() + 3
+    while float(app.progress.cget("value")) == initial:
+        assert time.monotonic() < deadline, "Indeterminate animation did not restart."
+        app.update()
+        time.sleep(0.01)
+    app._events.put(("report", Report(status="COMPLETED", input_count=4, output_count=4)))
+    poll_once()
+    assert not app._progress_animating and not app._busy
+    print("GUI: completion/progress race and indeterminate timer restart passed.")
 
 
 def check_viewray_public_plan(app: App, root: Path) -> None:
@@ -308,6 +422,8 @@ def main() -> None:
     app = App()
     try:
         app.update()
+        check_progress_and_theme(app)
+        check_progress_completion(app)
         with tempfile.TemporaryDirectory(prefix="opendicom-gui-smoke-") as temporary:
             source = Path(temporary) / "input"
             write_synthetic_ct(source)

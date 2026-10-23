@@ -8,7 +8,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
-from .theme import BACKGROUND, SURFACE, TEXT
+from .theme import style_plain_widget
 
 
 class StorageInspectionDialog(tk.Toplevel):
@@ -24,7 +24,7 @@ class StorageInspectionDialog(tk.Toplevel):
     ) -> None:
         super().__init__(parent)
         self.title("Inspect DICOM file")
-        self.configure(background=BACKGROUND)
+        style_plain_widget(self, "background")
         self.transient(parent)
         self.geometry("700x620")
         self.minsize(580, 520)
@@ -80,9 +80,12 @@ class StorageInspectionDialog(tk.Toplevel):
         )
         self.details = ScrolledText(
             body, wrap="word", font="TkFixedFont", height=12,
-            background=SURFACE, foreground=TEXT, relief="flat", borderwidth=0,
+            relief="flat", borderwidth=0,
             padx=10, pady=10, state="disabled",
         )
+        style_plain_widget(self.details)
+        style_plain_widget(self.details.frame)
+        style_plain_widget(self.details.vbar)
         self.details.grid(row=5, sticky="nsew")
         buttons = ttk.Frame(body)
         buttons.grid(row=6, sticky="ew", pady=(14, 0))

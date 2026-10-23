@@ -7,7 +7,7 @@ DICOM files while preserving relationships between images and radiotherapy
 objects. It works locally, with no account, telemetry, PACS connection, or data
 upload. The processing engine also has a command-line interface.
 
-**Version 0.2.1 is an initial validation release.** Automated checks do not prove
+**Version 0.2.2 is an initial validation release.** Automated checks do not prove
 that all identifying information has been removed, establish clinical
 suitability, or demonstrate regulatory compliance. Review every dataset before
 sharing it. No claim of a fully verified DICOM confidentiality profile is made.
@@ -54,6 +54,18 @@ The illustration uses synthetic counts; it is not a clinical validation result.
 4. Click **De-identify**. It scans, processes, and validates the dataset in one run.
    You can cancel while the interface remains responsive.
 5. Read the findings, save a report if needed, and perform a privacy review.
+
+Use **Dark mode** or **Light mode** in the header to change appearance, including
+while a job is running. The app remembers this choice locally; the appearance
+file contains only the selected theme. Dialogs supplied by the operating system
+may follow its own appearance setting.
+
+The progress bar shows completed files and a percentage **for the current
+stage**: scanning, de-identifying, validating, or rechecking source files. It
+starts again for each stage; it is not an overall percentage or a time estimate.
+Finding files, checking references and publishing use an animated indicator
+because those steps have no file-based total. Processing is complete only when
+the final result says so, after validation and publication finish.
 
 Private-tag removal and validation are always enabled. A custom prefix must be a
 neutral label; do not use a patient name or original identifier. Output preserves
@@ -356,7 +368,7 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests**, **Native desktop builds** and **Draft versioned release** workflows
 are manually initiated. A deliberate draft-release run against a matching tag,
-for example `v0.2.1`, builds the native packages and creates a draft prerelease;
+for example `v0.2.2`, builds the native packages and creates a draft prerelease;
 creating or pushing the tag alone does neither. Hosted runs still consume
 Actions minutes. No workflow changes repository visibility.
 

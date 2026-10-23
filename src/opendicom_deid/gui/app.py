@@ -16,9 +16,10 @@ from ..core.models import Cancelled, Finding, Progress, ScanResult
 from ..core.report import Report, format_findings
 from .dialogs import ask_directory
 from .licenses import license_text
+from .progress import LatestProgress, progress_display
 from .settings import AdvancedSettings
 from .storage_inspection import StorageInspectionDialog
-from .theme import BACKGROUND, MUTED, SURFACE, TEXT, apply_theme
+from .theme import apply_theme, persist_theme, style_plain_widget
 
 
 def create_output_folder(parent: str, name: str, input_directory: str) -> Path:
@@ -66,7 +67,7 @@ class App(tk.Tk):
 
     def __init__(self) -> None:
         super().__init__()
-        apply_theme(self)
+        self._theme_mode = apply_theme(self)
         self.title("OpenDICOM De-ID")
         self.minsize(740, 680)
         width = min(860, max(740, self.winfo_screenwidth() - 80))
@@ -74,8 +75,10 @@ class App(tk.Tk):
         self.geometry(f"{width}x{height}")
         self.protocol("WM_DELETE_WINDOW", self.close)
         self._events: Queue[tuple[str, object]] = Queue()
+        self._latest_progress = LatestProgress()
         self._cancel = Event()
         self._busy = False
+        self._progress_animating = False
         self._closing = False
         self._advanced_visible = False
         self._folder_window: tk.Toplevel | None = None
@@ -105,6 +108,9 @@ class App(tk.Tk):
         ).grid(row=1, sticky="w", pady=(5, 0))
         ttk.Label(header, text="OFFLINE", style="Badge.TLabel").grid(row=0, column=1, padx=(16, 12))
         ttk.Button(header, text="About", command=self.show_about).grid(row=0, column=2)
+        self.theme_button = ttk.Button(header, command=self.toggle_theme)
+        self.theme_button.configure(text="Light mode" if self._theme_mode == "dark" else "Dark mode")
+        self.theme_button.grid(row=1, column=1, columnspan=2, sticky="e", pady=(5, 0))
 
         directories = ttk.Frame(frame, style="Card.TFrame", padding=(18, 12))
         directories.grid(row=1, sticky="ew")
@@ -158,7 +164,7 @@ class App(tk.Tk):
         self.cancel_button.grid(row=0, column=2, padx=(8, 0))
         self._advanced_window = tk.Toplevel(self)
         self._advanced_window.title("Advanced options")
-        self._advanced_window.configure(background=BACKGROUND)
+        style_plain_widget(self._advanced_window, "background")
         self._advanced_window.transient(self)
         self._advanced_window.withdraw()
         self._advanced_window.columnconfigure(0, weight=1)
@@ -205,14 +211,11 @@ class App(tk.Tk):
             state="disabled",
             relief="flat",
             borderwidth=0,
-            background=SURFACE,
-            foreground=MUTED,
-            selectbackground="#DCE8F2",
-            selectforeground=TEXT,
             highlightthickness=0,
             spacing1=3,
             spacing3=5,
         )
+        style_plain_widget(self.details, "muted")
         self.details.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(details_frame, orient="vertical", command=self.details.yview)
         scroll.grid(row=0, column=1, sticky="ns", padx=(8, 0))
@@ -232,6 +235,12 @@ class App(tk.Tk):
         )
         results.bind("<Configure>", lambda event: self._wrap_labels(results, event.width - 40))
         self._poll_id = self.after(80, self._poll)
+
+    def toggle_theme(self) -> None:
+        self._theme_mode = apply_theme(self, "light" if self._theme_mode == "dark" else "dark")
+        self.theme_button.configure(text="Light mode" if self._theme_mode == "dark" else "Dark mode")
+        # Failure to save a cosmetic preference must not interrupt a running job.
+        persist_theme(self._theme_mode)
 
     def _directory_row(
         self,
@@ -287,7 +296,7 @@ class App(tk.Tk):
         self._folder_window = window
         window.title("Create output folder")
         window.transient(self)
-        window.configure(background=SURFACE)
+        style_plain_widget(window)
         window.resizable(False, False)
         body = ttk.Frame(window, style="Card.TFrame", padding=24)
         body.grid(sticky="nsew")
@@ -462,8 +471,8 @@ class App(tk.Tk):
     def _launch(self, job: Callable[[], object], kind: str) -> None:
         self._cancel = Event()
         self._set_busy(True)
-        self.progress.configure(mode="indeterminate")
-        self.progress.start(12)
+        self._latest_progress.begin()
+        self._show_progress(Progress("Preparing", 0, 0))
         self.counts.set("Preparing…")
 
         def work() -> None:
@@ -478,7 +487,23 @@ class App(tk.Tk):
         Thread(target=work, name="opendicom-worker", daemon=False).start()
 
     def _progress_event(self, value: Progress) -> None:
-        self._events.put(("progress", value))
+        # The worker only writes plain data; the Tk thread paints the newest
+        # update once per poll, even when thousands of files finish quickly.
+        self._latest_progress.publish(value)
+
+    def _show_progress(self, value: Progress) -> None:
+        display = progress_display(value)
+        mode = "indeterminate" if display.percentage is None else "determinate"
+        if str(self.progress.cget("mode")) != mode:
+            self.progress.stop()
+            self._progress_animating = False
+            self.progress.configure(mode=mode, value=0)
+        if mode == "indeterminate" and not self._progress_animating:
+            self.progress.start(40)
+            self._progress_animating = True
+        if display.percentage is not None:
+            self.progress.configure(value=display.percentage)
+        self.counts.set(display.label)
 
     def scan(self) -> None:
         if self._busy:
@@ -541,30 +566,16 @@ class App(tk.Tk):
             self.status.set("Cancelling safely… Please wait for cleanup to finish.")
 
     def _poll(self) -> None:
+        if (progress := self._latest_progress.take()) is not None and self._busy:
+            self._show_progress(progress)
         for _ in range(150):
             try:
                 kind, value = self._events.get_nowait()
             except Empty:
                 break
-            if kind == "progress":
-                assert isinstance(value, Progress)
-                if value.total:
-                    self.progress.stop()
-                    self.progress.configure(
-                        mode="determinate", value=100 * value.completed / value.total
-                    )
-                phase = {
-                    "scan": "Scanning",
-                    "scanning": "Scanning",
-                    "anonymize": "De-identifying",
-                    "anonymizing": "De-identifying",
-                    "de-identifying": "De-identifying",
-                    "validate": "Validating",
-                    "validating": "Validating",
-                }.get(value.phase.lower(), "Processing")
-                self.counts.set(f"{phase}: {value.completed} / {value.total} files")
-                continue
+            self._latest_progress.finish()
             self.progress.stop()
+            self._progress_animating = False
             self._set_busy(False)
             if kind == "scan":
                 assert isinstance(value, ScanResult)
@@ -576,6 +587,9 @@ class App(tk.Tk):
                     f"{value.total} DICOM files" + (f"  |  {modalities}" if modalities else "")
                 )
                 self.counts.set(f"Scanned: {value.total} DICOM files; skipped: {value.skipped}")
+                self.progress.configure(
+                    mode="determinate", value=100 if value.ok and value.total else 0
+                )
                 self.status.set(
                     "Scan complete. Ready to de-identify."
                     if value.ok and value.total
@@ -613,6 +627,7 @@ class App(tk.Tk):
                     self._inspection_window.show_result({"status": "CANCELLED"})
                 self.status.set("Cancelled. No completed dataset was published.")
                 self.scan_summary.set("Scan cancelled; counts are incomplete.")
+                self.counts.set("Cancelled")
                 self.progress.configure(mode="determinate", value=0)
             else:
                 if self._inspection_window is not None:
@@ -620,6 +635,7 @@ class App(tk.Tk):
                         "status": "FAILED", "message": "The format could not be safely inspected."
                     })
                 self.status.set("The operation failed. No success is claimed.")
+                self.counts.set("Operation failed")
                 self._set_details(
                     "Check directory access, available space, and DICOM support. Parser error text is omitted to protect patient information."
                 )
@@ -668,7 +684,7 @@ class App(tk.Tk):
     def show_about(self) -> None:
         window = tk.Toplevel(self)
         window.title("About OpenDICOM De-ID")
-        window.configure(background=BACKGROUND)
+        style_plain_widget(window, "background")
         window.geometry("680x500")
         window.transient(self)
         window.columnconfigure(0, weight=1)
@@ -686,11 +702,12 @@ class App(tk.Tk):
             font="TkTextFont",
             padx=12,
             pady=12,
-            background=SURFACE,
-            foreground=TEXT,
             relief="flat",
             borderwidth=0,
         )
+        style_plain_widget(text)
+        style_plain_widget(text.frame)
+        style_plain_widget(text.vbar)
         text.grid(row=1, sticky="nsew", padx=16)
         text.insert("1.0", license_text())
         text.configure(state="disabled")
@@ -724,6 +741,17 @@ def check_startup() -> None:
     app = App()
     try:
         app.update_idletasks()
+        # Verify both packaged palettes and a visibly filled progress element;
+        # startup checks must not change the user's saved appearance preference.
+        for mode in ("light", "dark"):
+            apply_theme(app, mode)
+            app._show_progress(Progress("Scanning", 1, 2))
+            app.update()
+            assert float(app.progress.cget("value")) == 50
+            assert app.progress.winfo_height() >= 10
+            assert "pbar" in app.progress.identify(
+                app.progress.winfo_width() // 4, app.progress.winfo_height() // 2
+            )
         app.toggle_advanced()
         app.update()
         app.toggle_advanced()

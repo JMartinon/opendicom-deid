@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.2.1
+# Validation evidence and remaining acceptance work — 0.2.2
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -138,6 +138,26 @@ Passing these checks does not establish real ViewRay compatibility or complete
 inputs for independent dose reconstruction.
 
 ## Other automated checks
+
+### Appearance and stage progress
+
+Version 0.2.2 adds light/dark palettes and file-based progress for the current
+stage. `tests/test_theme.py` covers preference round trips, invalid/oversized
+settings, failed writes, platform settings locations and palette contrast.
+Only the appearance choice is persisted; application paths and patient data
+are not saved in that file.
+
+`tests/test_progress.py` checks stage percentages, completion counting for
+skipped/rejected scan files, bounded latest-update storage, the final source
+recheck, and cancellation before publication. The percentage measures files
+completed in that stage, not elapsed time or total job completion. Unknown-length
+steps use an animated indicator rather than a fabricated percentage.
+
+The GUI smoke check holds a synthetic worker between stages to inspect the
+painted progress element and displayed counts. It also switches themes during
+processing and checks that the job remains active and its progress is preserved.
+Packaged startup checks exercise both palettes and a visibly filled progress
+element. These checks do not replace visual acceptance on each target platform.
 
 ### Clinical text, equipment fields and strict mode
 
@@ -306,6 +326,16 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
+For version 0.2.2 on October 23, 2026, **482 tests passed** locally on Python
+3.12.14 with Tcl/Tk. On Python 3.14.7 without Tcl/Tk, **464 tests passed** and the
+18-test appearance module was skipped as a whole. Ruff reported no errors.
+Native macOS GUI checks cover both palettes, a visibly filled progress bar,
+stage changes, cancellation, a completion/progress race, and restarting the
+indeterminate animation. These checks use synthetic inputs.
+The locally packaged macOS ARM64 application passed frozen GUI startup and
+synthetic equipment/clinical text, ViewRay opt-in, reference and pixel checks.
+Native Windows 0.2.2 verification remains outstanding.
+
 For version 0.2.1 on October 23, 2026, all **439 tests passed** locally on Python
 3.12.14 and 3.14.7; Ruff reported no errors. `tests/test_windows_file_access.py`
 adds 16 synthetic checks
@@ -332,7 +362,8 @@ cover retained values, neutral beam labels, cross-file identifier matches,
 short identifiers, and deliberate output tampering. Twenty-two reference-class
 tests cover the narrow correction, identity scope, duplicate targets, safe
 diagnostics, unchanged source content, and output tampering. Local GUI smoke
-checks passed. This is historical evidence; it is not a test count for 0.2.0.
+checks passed. These earlier release results are historical evidence, not
+test counts for 0.2.2.
 
 Builds now run locally by default. The **Tests**, **Native desktop builds** and
 **Draft versioned release** workflows require deliberate manual initiation;
@@ -364,6 +395,14 @@ details. On October 23, 2026, the installed Slicer 5.13 also passed a runtime
 smoke check with temporary settings and an empty temporary database. Existing
 user settings and patient files were untouched. This verifies the helper's
 actual Qt/CTK interfaces, not SlicerRT clinical import acceptance.
+
+Version 0.2.2 adds 12 tests for the session-only Scalar Volume reader guard,
+including mixed lists, cached loadables, existing plugin instances, restoration,
+and unavailable databases. The installed Slicer 5.13 passed a synthetic runtime
+check: the known private plan was excluded, a CT volume loaded through GDCM,
+and the original reader was restored. The combined startup helper was also
+verified with temporary settings and a temporary database. These tests do not
+establish that SlicerRT supports private-plan beams.
 
 Clinical labels scrubbed by older releases cannot be reconstructed from their
 output. Rerun the original export with the new text policy before assessing

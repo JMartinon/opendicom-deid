@@ -159,6 +159,8 @@ def process_batch(
             return groups[relative]
 
         expected: list[ExpectedOutput] = []
+        if progress:
+            progress(Progress("De-identifying", 0, scan.total))
         for index, record in enumerate(scan.files, 1):
             current_label = record.file_id
             check_cancel(cancel)
@@ -211,6 +213,8 @@ def process_batch(
             nonlocal stage, current_label
             current_label = None
             stage = "rechecking source files"
+            if progress:
+                progress(Progress("Rechecking source files", 0, 0))
             # Recheck on every attempt, including after a Windows lock wait.
             inventory_findings: list[Finding] = []
             final_paths = _paths(source, options.recursive, inventory_findings, cancel)
@@ -219,7 +223,9 @@ def process_batch(
                     "FAIL", "SOURCE_CHANGED", "The input directory contents changed during processing."
                 ))
                 return False
-            for record in scan.files:
+            if progress:
+                progress(Progress("Rechecking source files", 0, scan.total))
+            for index, record in enumerate(scan.files, 1):
                 check_cancel(cancel)
                 current_label = record.file_id
                 if file_digest(record.path) != record.sha256:
@@ -227,8 +233,12 @@ def process_batch(
                         "FAIL", "SOURCE_CHANGED", "An input file changed before final validation.", record.file_id
                     ))
                     return False
+                if progress:
+                    progress(Progress("Rechecking source files", index, scan.total))
             current_label = None
             stage = "publishing output"
+            if progress:
+                progress(Progress("Publishing", 0, 0))
             check_directories(source, destination)
             check_cancel(cancel)
             if destination.exists():

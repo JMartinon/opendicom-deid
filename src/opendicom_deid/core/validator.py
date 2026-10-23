@@ -267,6 +267,8 @@ def validate_batch(
         ))
     for index, output in enumerate(outputs, 1):
         check_cancel(cancel)
+        if progress:
+            progress(Progress("Validating", index - 1, len(outputs)))
         try:
             ds = read_dicom(output.path, remove_private=False)
             snapshot = capture_snapshot(ds)
@@ -367,8 +369,9 @@ def validate_batch(
                 "FAIL", "DATE_POLICY", "Date removal or consistent patient date shifting failed.",
                 output.source.file_id,
             ))
-        if progress:
-            progress(Progress("Validating", index, len(outputs)))
+    if progress:
+        progress(Progress("Validating", len(outputs), len(outputs)))
+        progress(Progress("Checking references", 0, 0))
     if any(any(values) for snap in snapshots for values in snap.equipment_text.values()):
         findings.append(_finding(
             "WARNING", "EQUIPMENT_TEXT_REVIEW",

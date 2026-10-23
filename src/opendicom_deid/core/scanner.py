@@ -81,6 +81,8 @@ def scan_directory(
     if not root.is_dir():
         result.findings.append(Finding("FAIL", "INPUT_DIRECTORY", "Select a readable input directory."))
         return result
+    if progress:
+        progress(Progress("Inventory", 0, 0))
     paths = _paths(root, recursive, result.findings, cancel)
     result.source_files = tuple(paths)
     duplicates: dict[str, FileRecord] = {}
@@ -89,6 +91,8 @@ def scan_directory(
     identity_details: dict[tuple[str, ...], dict[str, str]] = {}
     for index, source in enumerate(paths, 1):
         check_cancel(cancel)
+        if progress:
+            progress(Progress("Scanning", index - 1, len(paths)))
         label = f"File {index:06d}"
         try:
             before_hash = file_digest(source)
@@ -102,8 +106,6 @@ def scan_directory(
                 ))
             else:
                 result.skipped += 1
-            if progress:
-                progress(Progress("Scanning", index, len(paths)))
             continue
         sop_class = str(ds.SOPClassUID)
         modality = modality_label(ds)
@@ -216,8 +218,8 @@ def scan_directory(
                 result.findings.append(Finding(
                     "FAIL", "CONFLICTING_DUPLICATE", "Non-identical files share an instance UID; resolve the conflict before processing.", label
                 ))
-        if progress:
-            progress(Progress("Scanning", index, len(paths)))
+    if progress:
+        progress(Progress("Scanning", len(paths), len(paths)))
     result.modalities = dict(Counter(record.modality for record in result.files))
     repairs = reference_class_repairs(result.files, enabled=allow_viewray_public_plan)
     result.findings.extend(reference_class_findings(
