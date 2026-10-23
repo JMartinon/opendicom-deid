@@ -1,0 +1,145 @@
+name: Verified Windows executable
+
+on:
+  # Run deliberately when a Windows release is needed; no other OS jobs are started.
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Package version to build (without the leading v)
+        required: true
+        default: '0.3.1'
+        type: string
+      expected_commit:
+        description: Full 40-character source commit SHA to verify before building
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Verify requested source and version
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          import ast
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          expected = os.environ["EXPECTED_COMMIT"]
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version), "Invalid release version"
+          assert re.fullmatch(r"[0-9a-f]{40}", expected), "Expected a full lowercase commit SHA"
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert actual == expected == os.environ["GITHUB_SHA"], "Unexpected source commit"
+          package = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          assert package["project"]["version"] == version, "Package version mismatch"
+          module = ast.parse(Path("src/opendicom_deid/__init__.py").read_text(encoding="utf-8"))
+          declared = [
+              ast.literal_eval(node.value)
+              for node in module.body
+              if isinstance(node, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id == "__version__"
+                      for target in node.targets)
+          ]
+          assert declared == [version], "Application version mismatch"
+          if os.environ["GITHUB_REF_TYPE"] == "tag":
+              assert os.environ["GITHUB_REF_NAME"] == "v" + version, "Version tag mismatch"
+          print(f"Verified source {actual}, version {version}")
+      - name: Check build interpreter
+        run: python scripts/build_environment.py
+      - name: Install build and test dependencies
+        run: python -m pip install '.[build,dev]'
+      - name: Check Python source
+        run: python -m ruff check .
+      - name: Run complete test suite
+        run: python -m pytest
+      - name: Check source GUI and concurrent processing
+        run: python scripts/smoke_gui.py
+      - name: Build Windows executable and archive
+        run: python scripts/build.py
+      - name: Check packaged GUI and concurrent synthetic RT processing
+        run: python scripts/smoke_frozen.py
+      - name: Record verified artifact provenance
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          import hashlib
+          import importlib.metadata
+          import json
+          import os
+          import platform
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          assert importlib.metadata.version("opendicom-deid") == version
+          stem = f"OpenDICOM-De-ID-{version}-Windows-x86_64"
+          release = Path("dist/release")
+          archive = release / f"{stem}.zip"
+          checksum = archive.with_suffix(".zip.sha256")
+          executable = Path("dist/OpenDICOM-De-ID.exe")
+          archive_hash = hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert checksum.read_text(encoding="ascii").strip() == f"{archive_hash}  {archive.name}"
+          with zipfile.ZipFile(archive) as bundle:
+              packaged = bundle.read("OpenDICOM-De-ID.exe")
+          assert packaged == executable.read_bytes(), "Archive differs from the tested executable"
+          provenance = {
+              "version": version,
+              "commit": os.environ["EXPECTED_COMMIT"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "python": sys.version,
+              "platform": platform.platform(),
+              "architecture": platform.machine(),
+              "packages": {
+                  name: importlib.metadata.version(name)
+                  for name in ("opendicom-deid", "pydicom", "dicom-anonymizer", "pyinstaller")
+              },
+              "checks_passed": [
+                  "source-commit-and-version", "build-interpreter", "ruff", "full-pytest",
+                  "source-gui-and-concurrent-processing",
+                  "packaged-gui-and-concurrent-synthetic-rt-processing",
+                  "archive-contains-tested-executable",
+              ],
+              "archive": {"name": archive.name, "sha256": archive_hash},
+              "executable": {
+                  "name": executable.name,
+                  "sha256": hashlib.sha256(packaged).hexdigest(),
+              },
+          }
+          (release / f"{stem}.provenance.json").write_text(
+              json.dumps(provenance, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(provenance, indent=2))
+      - name: Upload verified Windows release files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OpenDICOM-De-ID-Windows-x86_64-${{ github.sha }}
+          path: |
+            dist/release/OpenDICOM-De-ID-${{ inputs.release_version }}-Windows-x86_64.zip
+            dist/release/OpenDICOM-De-ID-${{ inputs.release_version }}-Windows-x86_64.zip.sha256
+            dist/release/OpenDICOM-De-ID-${{ inputs.release_version }}-Windows-x86_64.provenance.json
+          if-no-files-found: error
+          retention-days: 14

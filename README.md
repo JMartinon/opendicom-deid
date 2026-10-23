@@ -237,12 +237,15 @@ also offer platform packages under **Artifacts**. These packages include Python,
 Tcl/Tk, the application, and dependency notices.
 **End users do not need Python, a terminal, or a local build.**
 
-For Windows, select **Windows-application**. Extract the downloaded ZIP once and
-double-click **OpenDICOM-De-ID.exe** directly inside the extracted folder. The
-standalone executable includes its runtime; keep the accompanying license
-notices when distributing it. The separate **OpenDICOM-De-ID-Windows-x86_64**
-artifact is the versioned archive plus checksum for distribution; that artifact
-requires extracting both the outer GitHub ZIP and the inner application ZIP.
+For Windows, open the [Releases page](https://github.com/JMartinon/opendicom-deid/releases)
+and download the **Windows `.exe`** asset, then double-click it. It includes
+Python and Tcl/Tk. The Windows ZIP contains the same executable, external license
+notices and distribution instructions; keep those notices when redistributing
+the package. SHA-256 checksums accompany the release files.
+
+Historical Actions runs also offer **Windows-application**: extract that artifact
+once, then open **OpenDICOM-De-ID.exe**. Versioned archive artifacts require
+extracting both GitHub's outer ZIP and the application ZIP inside.
 
 The source repository is public. Published
 [release assets](https://github.com/JMartinon/opendicom-deid/releases) can be
@@ -396,9 +399,16 @@ The build script prints the full launch and archive paths when it finishes.
 
 The **Tests**, **Native desktop builds** and **Draft versioned release** workflows
 are manually initiated. A deliberate draft-release run against a matching tag,
-for example `v0.3.0`, builds the native packages and creates a draft prerelease;
+for example `v0.3.1`, builds the native packages and creates a draft prerelease;
 creating or pushing the tag alone does neither. Hosted runs still consume
 Actions minutes. No workflow changes repository visibility.
+
+For a Windows-only hosted build, manually start **Verified Windows executable**
+with the package version and full source commit SHA. It runs the full Windows
+test suite, source GUI and packaged parallel-processing checks, then uploads
+the tested archive, checksum and build provenance. It starts no macOS or Linux
+jobs and does not publish automatically; only verified files are promoted to a
+public development release.
 
 ## Contributing and reporting problems
 

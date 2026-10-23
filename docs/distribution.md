@@ -14,6 +14,11 @@ Tcl/Tk are included in the resulting desktop artifact. See the
 
 ## Desktop packages
 
+Windows development releases provide a direct `.exe` download as well as a ZIP
+with the executable, external license notices and this guide. Both contain the
+same verified application. End users can double-click the `.exe` without a
+Python installation; the packaged About view includes license notices too.
+
 End users can run the packaged application without installing Python or using
 build commands. Use an archive built locally by the maintainer or a published
 version's [release assets](https://github.com/JMartinon/opendicom-deid/releases),
@@ -250,6 +255,16 @@ against a matching version tag; that workflow builds all four native packages.
 Alternatively, upload locally built archives and checksums when preparing a
 release. Review artifacts before publishing. Signing and notarization require
 separately configured credentials and are not part of these workflows.
+
+When only Windows is needed, **Verified Windows executable** is a separate
+manual workflow using one Windows runner. Supply `release_version` and the full
+40-character `expected_commit` for the selected branch or tag. The workflow
+checks both before installing dependencies, runs all tests and source/frozen
+GUI checks (including parallel RT processing), and confirms the archive contains
+the tested executable. Its artifact includes SHA-256 and provenance records.
+After verifying the artifact against the successful run and exact source commit,
+publish its executable and archive with matching checksums as a development
+prerelease. Never promote an incomplete or failed build.
 
 ## Acceptance checks before distribution
 

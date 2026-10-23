@@ -70,6 +70,88 @@ def test_scan_progress_counts_skipped_and_rejected_files(tmp_path, dicom_factory
     assert all(event.total == 3 for event in events if event.phase == "Scanning")
 
 
+def assert_publication_progress(events, total):
+    """Only an ordered recheck prefix can precede a retry; publishing needs every file."""
+    start = Progress("Rechecking source files", 0, 0)
+    complete_attempt = [
+        start,
+        *(Progress("Rechecking source files", completed, total) for completed in range(total + 1)),
+        Progress("Publishing", 0, 0),
+    ]
+    attempts = []
+    for event in events:
+        if event == start:
+            attempts.append([])
+        assert attempts, "Publication progress must begin with a source recheck."
+        attempts[-1].append(event)
+    assert attempts, "Successful publication requires at least one source check."
+    for attempt in attempts:
+        assert attempt == complete_attempt[:len(attempt)]
+    assert attempts[-1] == complete_attempt
+
+
+@pytest.mark.parametrize("prefix_length", range(5))
+def test_publication_progress_accepts_only_complete_or_interrupted_ordered_attempts(prefix_length):
+    complete = [
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ]
+    assert_publication_progress(complete[:prefix_length] + complete, 1)
+
+
+@pytest.mark.parametrize("invalid", [
+    pytest.param([], id="absent-check"),
+    pytest.param([Progress("Publishing", 0, 0)], id="publish-without-check"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Publishing", 0, 0),
+    ], id="publish-before-hashing"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ], id="missing-count-start"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+    ], id="unfinished-last-attempt"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 2),
+        Progress("Rechecking source files", 1, 2),
+        Progress("Publishing", 0, 0),
+    ], id="wrong-total"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ], id="duplicate-count"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Publishing", 0, 0),
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ], id="retry-cannot-mask-premature-publish"),
+    pytest.param([
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ], id="retry-cannot-mask-skipped-count"),
+])
+def test_publication_progress_rejects_missing_or_out_of_order_checks(invalid):
+    with pytest.raises(AssertionError):
+        assert_publication_progress(invalid, 1)
+
+
 def test_processing_progress_includes_final_source_check_before_publication(
     tmp_path, dicom_factory, dicom_writer,
 ):
@@ -84,10 +166,14 @@ def test_processing_progress_includes_final_source_check_before_publication(
 
     report = process_batch(source, output, progress=progress)
     assert report.ok, report.summary()
-    for phase in ("Scanning", "De-identifying", "Validating", "Rechecking source files"):
+    for phase in ("Scanning", "De-identifying", "Validating"):
         assert [event.completed for event in events if event.phase == phase and event.total] == [0, 1, 2, 3]
-    assert events[-1] == Progress("Publishing", 0, 0)
-    assert events.index(Progress("Validating", 3, 3)) < events.index(Progress("Rechecking source files", 0, 0))
+    first_recheck = events.index(Progress("Rechecking source files", 0, 0))
+    assert events.index(Progress("Validating", 3, 3)) < first_recheck
+    publication_events = events[first_recheck:]
+    # A transient lock can interrupt source hashing or directory publication.
+    # Retrying must restart the source check; no attempt can publish a prefix.
+    assert_publication_progress(publication_events, 3)
     assert len(list(output.rglob("*.dcm"))) == 3
 
 

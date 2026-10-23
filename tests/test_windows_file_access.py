@@ -11,7 +11,7 @@ import pytest
 
 from opendicom_deid.core import anonymizer, filesystem
 from opendicom_deid.core.anonymizer import process_batch
-from opendicom_deid.core.models import Cancelled
+from opendicom_deid.core.models import Cancelled, Progress
 
 
 def windows_error(code: int) -> OSError:
@@ -149,7 +149,19 @@ def test_transient_publication_lock_keeps_the_validated_output(
     source, original, destination = create_source(tmp_path, dicom_factory, dicom_writer)
     original_bytes = original.read_bytes()
     real_rename = Path.rename
+    real_digest = anonymizer.file_digest
     attempts = []
+    events = []
+    rechecked_files = []
+
+    def progress(event):
+        events.append(event)
+        assert not destination.exists(), "Progress must precede atomic publication."
+
+    def tracked_digest(path):
+        if events and events[-1].phase == "Rechecking source files":
+            rechecked_files.append(path)
+        return real_digest(path)
 
     def occasionally_locked(path, target):
         if target == destination:
@@ -159,10 +171,20 @@ def test_transient_publication_lock_keeps_the_validated_output(
         return real_rename(path, target)
 
     monkeypatch.setattr(Path, "rename", occasionally_locked)
+    monkeypatch.setattr(anonymizer, "file_digest", tracked_digest)
     monkeypatch.setattr(filesystem.time, "sleep", lambda _: None)
-    report = process_batch(source, destination)
+    report = process_batch(source, destination, progress=progress)
     assert report.ok, report.to_dict()
     assert len(attempts) == 2
+    assert rechecked_files == [original, original]
+    first_recheck = events.index(Progress("Rechecking source files", 0, 0))
+    assert events.index(Progress("Validating", 1, 1)) < first_recheck
+    assert events[first_recheck:] == [
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 1),
+        Progress("Rechecking source files", 1, 1),
+        Progress("Publishing", 0, 0),
+    ] * 2
     assert original.read_bytes() == original_bytes
     assert len(list(destination.glob("*.dcm"))) == 1
     assert not list(tmp_path.glob(".opendicom-incomplete-*"))
@@ -196,6 +218,63 @@ def test_persistent_publication_lock_is_private_and_discards_staging(
     assert "publish" in serialized.lower() or "publication" in serialized.lower()
     assert "SYNTHETIC-PRIVATE" not in serialized
     assert str(tmp_path) not in serialized
+
+
+def test_transient_source_hash_lock_restarts_final_check_before_publication(
+    tmp_path, dicom_factory, dicom_writer, monkeypatch,
+):
+    source, first, destination = create_source(tmp_path, dicom_factory, dicom_writer)
+    second = dicom_writer(dicom_factory(), source / "two.dcm")
+    original_bytes = [first.read_bytes(), second.read_bytes()]
+    real_digest = anonymizer.file_digest
+    real_rename = Path.rename
+    events = []
+    reads = []
+    successful_reads = []
+    publications = []
+
+    def progress(event):
+        events.append(event)
+        assert not destination.exists(), "Progress must precede atomic publication."
+
+    def occasionally_locked(path):
+        rechecking = events and events[-1].phase == "Rechecking source files"
+        if rechecking:
+            reads.append(path)
+            if len(reads) == 2:
+                assert path == second
+                raise windows_error(32)
+        digest = real_digest(path)
+        if rechecking:
+            successful_reads.append(path)
+        return digest
+
+    def checked_rename(path, target):
+        if target == destination:
+            assert successful_reads == [first, first, second]
+            publications.append(target)
+        return real_rename(path, target)
+
+    monkeypatch.setattr(anonymizer, "file_digest", occasionally_locked)
+    monkeypatch.setattr(Path, "rename", checked_rename)
+    monkeypatch.setattr(filesystem.time, "sleep", lambda _: None)
+    report = process_batch(source, destination, progress=progress)
+    assert report.ok, report.to_dict()
+    assert reads == [first, second, first, second]
+    assert publications == [destination]
+    first_recheck = events.index(Progress("Rechecking source files", 0, 0))
+    assert events.index(Progress("Validating", 2, 2)) < first_recheck
+    complete_attempt = [
+        Progress("Rechecking source files", 0, 0),
+        Progress("Rechecking source files", 0, 2),
+        Progress("Rechecking source files", 1, 2),
+        Progress("Rechecking source files", 2, 2),
+        Progress("Publishing", 0, 0),
+    ]
+    assert events[first_recheck:] == complete_attempt[:3] + complete_attempt
+    assert [first.read_bytes(), second.read_bytes()] == original_bytes
+    assert len(list(destination.glob("*.dcm"))) == 2
+    assert not list(tmp_path.glob(".opendicom-incomplete-*"))
 
 
 @pytest.mark.parametrize("change", ["edit_source", "add_source", "populate_destination"])

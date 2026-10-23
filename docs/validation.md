@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.3.0
+# Validation evidence and remaining acceptance work — 0.3.1
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -352,6 +352,13 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
   directory beside the destination. It must not be shared as a completed result.
 
 ## Local and platform acceptance
+
+Version 0.3.1 corrects a Windows build-test assumption: a successful publication
+retry can repeat source-file checking and its progress events. The tests require
+ordered progress within each attempt and a complete source check before every
+publication attempt. Injected Windows sharing locks verify repeated actual
+hash reads, unchanged source files and no published output before success.
+The processing policy and mandatory source checks remain unchanged.
 
 For version 0.3.0 on October 23, 2026, the full suite passed with **551 tests**
 on Python 3.12.14 with Tcl/Tk and **549 tests**, plus one skipped palette module,
