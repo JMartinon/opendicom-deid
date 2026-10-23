@@ -360,6 +360,16 @@ publication attempt. Injected Windows sharing locks verify repeated actual
 hash reads, unchanged source files and no published output before success.
 The processing policy and mandatory source checks remain unchanged.
 
+On October 23, 2026, all **569 tests passed** on Windows Server 2022 x86-64,
+Python 3.12.10 and Tcl 8.6.15. The source GUI, packaged GUI and two-worker
+synthetic CT/RT processing checks also passed. The verified archive contains
+the exact tested executable; its SHA-256 and source/run provenance are included
+in the public development release. The
+[Windows verification run](https://github.com/JMartinon/opendicom-deid/actions/runs/40041335197)
+built source commit `040b71264fc8737166b5610efd8debc6003e358f` using one Windows
+job. No macOS or Linux jobs were started for this release. These checks do not
+establish clinical acceptance or complete privacy.
+
 For version 0.3.0 on October 23, 2026, the full suite passed with **551 tests**
 on Python 3.12.14 with Tcl/Tk and **549 tests**, plus one skipped palette module,
 on Python 3.14.7 without Tcl/Tk. Three subsequent worker-failure/validation

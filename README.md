@@ -229,6 +229,10 @@ Exit code zero means the inspection ran, not that privacy checks passed.
 
 ## Install a desktop build
 
+**Windows 0.3.1:** [Download the executable](https://github.com/JMartinon/opendicom-deid/releases/download/v0.3.1/OpenDICOM-De-ID-0.3.1-Windows-x86_64.exe)
+or the [ZIP with license notices](https://github.com/JMartinon/opendicom-deid/releases/download/v0.3.1/OpenDICOM-De-ID-0.3.1-Windows-x86_64.zip).
+This is a development release, not intended for clinical use.
+
 Use the native archive supplied by the maintainer or a published
 [release](https://github.com/JMartinon/opendicom-deid/releases). Builds are now
 made locally by default to conserve GitHub Actions minutes. Existing or manually
