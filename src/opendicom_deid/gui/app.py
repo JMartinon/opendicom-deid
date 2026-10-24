@@ -308,8 +308,16 @@ class App(tk.Tk):
         if self._folder_window is not None:
             self._folder_window.lift()
             return
-        selected = self.output_path.get().strip() or self.input_path.get().strip()
-        initial = Path(selected).expanduser().parent if selected else Path.home()
+        output = self.output_path.get().strip()
+        source = self.input_path.get().strip()
+        if output:
+            initial = Path(output).expanduser()
+            if not initial.is_dir():
+                initial = initial.parent
+        elif source:
+            initial = Path(source).expanduser().parent
+        else:
+            initial = Path.home()
         if not initial.is_dir():
             initial = Path.home()
         window = tk.Toplevel(self)

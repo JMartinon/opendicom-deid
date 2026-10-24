@@ -55,7 +55,8 @@ The illustration uses synthetic counts; it is not a clinical validation result.
 1. Choose the input directory. Selecting or editing a path does not start a scan.
    **Scan input** is an optional preview of file counts, modalities, and findings.
 2. Choose a **new or empty** output directory, outside the input directory tree.
-   Use **New folder…** beside the output field to create and select a folder.
+   Use **New folder…** beside the output field to create and select a folder
+   inside the currently selected output directory.
 3. Leave the defaults in place, or expand **Advanced options**.
 4. Click **De-identify**. It scans, processes, and validates the dataset in one run.
    You can cancel while the interface remains responsive.
