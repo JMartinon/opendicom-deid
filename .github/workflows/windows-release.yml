@@ -7,7 +7,7 @@ on:
       release_version:
         description: Package version to build (without the leading v)
         required: true
-        default: '0.3.1'
+        default: '0.3.2'
         type: string
       expected_commit:
         description: Full 40-character source commit SHA to verify before building

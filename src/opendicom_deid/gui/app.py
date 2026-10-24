@@ -766,6 +766,7 @@ class App(tk.Tk):
 def check_startup() -> None:
     """Exercise Tk and a synthetic header through source and frozen GUI builds."""
     import json
+    import sys
     import tempfile
     import time
 
@@ -775,11 +776,37 @@ def check_startup() -> None:
     app = App()
     try:
         app.update_idletasks()
+        # Read the actual native frame attribute, independently of the setter,
+        # so the source and packaged Windows checks catch a wrong HWND as well
+        # as missing DWM calls. This never changes an OS preference.
+        native_titlebar = None
+        if sys.platform == "win32":
+            import ctypes
+
+            native_titlebar = ctypes.WinDLL("dwmapi").DwmGetWindowAttribute
+            native_titlebar.argtypes = [
+                ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32,
+            ]
+            native_titlebar.restype = ctypes.c_int32
+
+        def check_titlebar(window: tk.Tk | tk.Toplevel, mode: str) -> None:
+            if native_titlebar is None:
+                return
+            dark = ctypes.c_int32()
+            frame = int(window.wm_frame(), 0)
+            result = native_titlebar(frame, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+            assert result == 0, f"Could not read Windows title-bar appearance: {result:#x}"
+            assert bool(dark.value) == (mode == "dark"), "Windows title bar has the wrong appearance."
+
         # Verify both packaged palettes and a visibly filled progress element;
         # startup checks must not change any OS appearance preference.
+        # Suspend only the UI poll while requesting test palettes, otherwise
+        # the current OS preference can race and overwrite a test switch.
+        app.after_cancel(app._appearance_id)
+        app._appearance_id = None
         native_appearance = macos_window_appearance(app)
         try:
-            for mode in ("light", "dark"):
+            for mode in ("light", "dark", "light"):
                 if native_appearance is not None:
                     # Override this synthetic window, never the OS preference.
                     app.tk.call(
@@ -792,27 +819,45 @@ def check_startup() -> None:
                     apply_theme(app, mode)
                 app._show_progress(Progress("Scanning", 1, 2))
                 app.update()
+                check_titlebar(app, mode)
                 assert float(app.progress.cget("value")) == 50
                 assert app.progress.winfo_height() >= 10
                 assert "pbar" in app.progress.identify(
                     app.progress.winfo_width() // 4, app.progress.winfo_height() // 2
                 )
+            if native_titlebar is not None:
+                apply_theme(app, "dark")
+            app.toggle_advanced()
+            app.update()
+            check_titlebar(app._advanced_window, app._theme_mode)
+            app.toggle_advanced()
+            app.update()
+            app.toggle_advanced()
+            app.update()
+            check_titlebar(app._advanced_window, app._theme_mode)
+            app._new_output_folder()
+            app.update()
+            assert app._folder_window is not None
+            check_titlebar(app._folder_window, app._theme_mode)
+            if native_titlebar is not None:
+                for mode in ("light", "dark", "light"):
+                    apply_theme(app, mode)
+                    app.update()
+                    for window in (app, app._advanced_window, app._folder_window):
+                        check_titlebar(window, mode)
+                print("GUI: Windows title bars follow light/dark changes, new dialogs, and remapping.")
+            # Exercise the same close callback as the window manager without
+            # creating an output folder.
+            app.tk.call(app._folder_window.protocol("WM_DELETE_WINDOW"))
+            app.toggle_advanced()
+            app.update()
+            assert app._folder_window is None
+            assert app.grab_current() is None
         finally:
             if native_appearance is not None:
                 app.tk.call("tk::unsupported::MacWindowStyle", "appearance", app, "auto")
             app._sync_system_appearance()
-        app.toggle_advanced()
-        app.update()
-        app.toggle_advanced()
-        app._new_output_folder()
-        app.update()
-        assert app._folder_window is not None
-        # Exercise the same close callback as the window manager without
-        # creating an output folder.
-        app.tk.call(app._folder_window.protocol("WM_DELETE_WINDOW"))
-        app.update()
-        assert app._folder_window is None
-        assert app.grab_current() is None
+            app._appearance_id = app.after(1000, app._poll_system_appearance)
         # A real worker read verifies that frozen builds contain the header
         # inspector, UID dictionary, and its GUI result path. Synthetic only.
         with tempfile.TemporaryDirectory(prefix="opendicom-startup-") as temporary:

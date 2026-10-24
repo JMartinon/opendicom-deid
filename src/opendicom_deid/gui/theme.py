@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from tkinter import font, ttk
 from typing import Literal
 
+from .window_chrome import style_window_chrome
+
 ThemeMode = Literal["light", "dark"]
 
 
@@ -77,6 +79,7 @@ def _style_plain(widget: tk.Misc, palette: Palette) -> None:
     foreground = palette.muted if role == "muted" else palette.text
     if isinstance(widget, (tk.Tk, tk.Toplevel)):
         widget.configure(background=background)
+        style_window_chrome(widget)
     elif isinstance(widget, (tk.Text, tk.Entry, tk.Listbox)):
         options = dict(
             background=background, foreground=foreground,

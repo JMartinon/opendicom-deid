@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.3.1
+# Validation evidence and remaining acceptance work — 0.3.2
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -352,6 +352,16 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
   directory beside the destination. It must not be shared as a completed result.
 
 ## Local and platform acceptance
+
+Version 0.3.2 applies the OS-selected appearance to native Windows title bars,
+including newly opened and reopened app dialogs. It also includes the fix that
+creates a new output folder inside the selected output directory. DICOM
+processing and privacy policies are unchanged.
+
+The GUI startup check now reads the Windows DWM title-bar attribute back from
+the real native frame after light/dark changes and dialog mapping. This check
+runs against both source and packaged executables on the Windows release runner;
+it does not change the operating system's appearance preference.
 
 Version 0.3.1 corrects a Windows build-test assumption: a successful publication
 retry can repeat source-file checking and its progress events. The tests require

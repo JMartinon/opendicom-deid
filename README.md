@@ -64,6 +64,8 @@ The illustration uses synthetic counts; it is not a clinical validation result.
 
 Appearance follows the operating system's light/dark setting, including changes
 while the app is running. There is no theme switch or separate saved preference.
+On supported Windows versions, the main window and app dialogs also apply this
+setting to their native title bars.
 macOS and Windows use their application appearance setting; Linux uses the
 desktop portal with KDE/GTK fallbacks. If no setting is available, the app starts
 in light mode. Scrollbars appear only when content needs scrolling and use the
