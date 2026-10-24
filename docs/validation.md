@@ -363,6 +363,16 @@ the real native frame after light/dark changes and dialog mapping. This check
 runs against both source and packaged executables on the Windows release runner;
 it does not change the operating system's appearance preference.
 
+On October 23, 2026 (US Eastern time), all **569 tests passed** locally on
+macOS and on the Windows Server 2022 x86-64 release runner with Python 3.12.10.
+Local native macOS GUI checks passed. On Windows, source and packaged GUI checks
+passed, including native title-bar readback, as did concurrent synthetic CT/RT
+processing. The [Windows verification run](https://github.com/JMartinon/opendicom-deid/actions/runs/40043476382)
+built source `bc604ee76e5af026a21719a0020d393f23f4ea89` in a single Windows job
+lasting 1 minute 48 seconds. No macOS or Linux Actions jobs were started.
+The published executable and ZIP digests match the verified build provenance.
+These automated checks do not establish clinical acceptance or complete privacy.
+
 Version 0.3.1 corrects a Windows build-test assumption: a successful publication
 retry can repeat source-file checking and its progress events. The tests require
 ordered progress within each attempt and a complete source check before every
