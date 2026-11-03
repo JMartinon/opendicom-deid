@@ -109,6 +109,15 @@ their generated patient pseudonyms. Empty folders and non-DICOM files are not co
 Turn off **Preserve patient folders and subfolders** in Advanced options only if
 you want a flat output directory (CLI: `--organization flat`).
 
+If a scan reports **PATIENT_CONFLICT**, files grouped under the same patient ID
+and issuer (or the same study when the ID is absent) have different nonempty
+Patient Name or Patient Birth Date values. Starting with 0.3.3.dev0, the scan
+ignores insignificant DICOM name padding and trailing empty name components.
+For remaining conflicts it identifies the field and both files by neutral
+number and modality. Compare that field locally in the original export. If the
+values disagree, verify the patient identity in the source system and re-export
+the complete plan. Dropping the flagged file can break the plan's references.
+
 ### Preserve useful RT information
 
 Version 0.2.0 defaults to **Preserve clinical names and descriptions** under

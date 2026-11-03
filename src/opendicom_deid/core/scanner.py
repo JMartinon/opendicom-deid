@@ -9,6 +9,7 @@ from threading import Event
 
 from pydicom.dataset import Dataset
 from pydicom.uid import UID
+from pydicom.valuerep import PersonName
 
 from .inspection import capture_snapshot
 from .models import FileRecord, Finding, Progress, ProgressCallback, ScanResult, check_cancel
@@ -39,6 +40,18 @@ def patient_key(ds: Dataset) -> tuple[str, ...]:
         )
         return ("id", str(ds.get("IssuerOfPatientID", "")), *scopes, identifier)
     return ("study", str(ds.get("StudyInstanceUID", "")))
+
+
+def _patient_name_for_comparison(name: PersonName) -> str:
+    """Ignore only DICOM PS3.5 §6.2 PN padding; never rewrite the source name."""
+    text = str(name)
+    groups = text.split("=")
+    if len(groups) > 3 or any(group.count("^") > 4 for group in groups):
+        return text  # Do not equate malformed structures with valid names.
+    return "=".join(
+        "^".join(part.strip(" ") for part in group.split("^")).rstrip("^")
+        for group in groups
+    ).rstrip("=")
 
 
 def _paths(root: Path, recursive: bool, findings: list[Finding], cancel: Event | None) -> list[Path]:
@@ -88,7 +101,7 @@ def scan_directory(
     duplicates: dict[str, FileRecord] = {}
     study_patients: dict[str, tuple[str, ...]] = {}
     series_studies: dict[str, str] = {}
-    identity_details: dict[tuple[str, ...], dict[str, str]] = {}
+    identity_details: dict[tuple[str, ...], dict[str, tuple[str, str]]] = {}
     for index, source in enumerate(paths, 1):
         check_cancel(cancel)
         if progress:
@@ -188,14 +201,27 @@ def scan_directory(
                 "WARNING", "MISSING_PATIENT_ID", "Missing patient ID: pseudonym linkage is limited to this study.", label
             ))
         details = identity_details.setdefault(identity, {})
-        for keyword in ("PatientName", "PatientBirthDate"):
-            value = str(ds.get(keyword, "")).strip()
-            if value and details.get(keyword, value) != value:
+        location = f"{label} ({modality})"
+        for keyword, field in (
+            ("PatientName", "Patient Name (0010,0010)"),
+            ("PatientBirthDate", "Patient Birth Date (0010,0030)"),
+        ):
+            raw = ds.get(keyword)
+            value = (
+                _patient_name_for_comparison(raw)
+                if keyword == "PatientName" and isinstance(raw, PersonName)
+                else str(raw or "").strip()
+            )
+            if not value:
+                continue
+            previous = details.get(keyword)
+            if previous is not None and previous[0] != value:
                 result.findings.append(Finding(
-                    "FAIL", "PATIENT_CONFLICT", "One patient identity has conflicting demographic information.", label
+                    "FAIL", "PATIENT_CONFLICT",
+                    f"{field} differs between {previous[1]} and {location} for the same "
+                    "patient identity. Verify both files in the source export.", label,
                 ))
-            if value:
-                details[keyword] = value
+            details[keyword] = (value, location)
         study = str(ds.StudyInstanceUID)
         series = str(ds.SeriesInstanceUID)
         if study_patients.setdefault(study, identity) != identity:

@@ -353,6 +353,14 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
+The local 0.3.3.dev0 build compares Patient Name according to the padding and
+empty-component rules for [DICOM PN](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html).
+Thirteen synthetic regression cases exercise CT/RTPLAN processing, differences
+that must still block publication, and conflict reports that name both files
+without disclosing source values. All 582 tests passed locally on macOS. These
+synthetic cases do not determine the cause of a particular hospital export's
+conflict. No new Windows build has been published for this change.
+
 Version 0.3.2 applies the OS-selected appearance to native Windows title bars,
 including newly opened and reopened app dialogs. It also includes the fix that
 creates a new output folder inside the selected output directory. DICOM

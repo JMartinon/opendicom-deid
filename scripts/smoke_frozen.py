@@ -81,6 +81,8 @@ def main() -> None:
                 roi.ContourSequence = [contour]
                 ds.ROIContourSequence = [roi]
             else:
+                # Equivalent to the image name: the last three PN components are empty.
+                ds.PatientName = "Synthetic^Only^^^"
                 ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
                 ds.TreatmentMachineName = "SYNTHETIC-ID"
                 reference = Dataset()
