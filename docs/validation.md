@@ -353,6 +353,13 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
 
 ## Local and platform acceptance
 
+In 0.3.3.dev1, a synthetic CT, RTSTRUCT and RTPLAN with one scoped Patient ID
+and names differing in capitalization produced one output Patient Name and
+Patient ID; both remapped RT references resolved to the expected objects.
+Tests also verified that missing IDs retain the stricter name check, distinct
+IDs or issuers do not merge, and conflicting birth dates or substantive name
+differences still prevent publication. All 587 tests passed locally on macOS.
+
 The local 0.3.3.dev0 build compares Patient Name according to the padding and
 empty-component rules for [DICOM PN](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/sect_6.2.html).
 Thirteen synthetic regression cases exercise CT/RTPLAN processing, differences

@@ -27,6 +27,8 @@ from .sop_classes import (
 )
 from .structure import structural_error
 
+type _DemographicValue = str | tuple[str, ...]
+
 
 def patient_key(ds: Dataset) -> tuple[str, ...]:
     """Use IDs with issuer scope; never merge by a patient's name alone."""
@@ -42,16 +44,23 @@ def patient_key(ds: Dataset) -> tuple[str, ...]:
     return ("study", str(ds.get("StudyInstanceUID", "")))
 
 
-def _patient_name_for_comparison(name: PersonName) -> str:
-    """Ignore only DICOM PS3.5 §6.2 PN padding; never rewrite the source name."""
+def _patient_name_for_comparison(
+    name: PersonName, *, ignore_case: bool = False,
+) -> _DemographicValue:
+    """Compare PN components within an identity; never rewrite the source name."""
     text = str(name)
     groups = text.split("=")
     if len(groups) > 3 or any(group.count("^") > 4 for group in groups):
         return text  # Do not equate malformed structures with valid names.
-    return "=".join(
+    normalized = "=".join(
         "^".join(part.strip(" ") for part in group.split("^")).rstrip("^")
         for group in groups
     ).rstrip("=")
+    if ignore_case:
+        # Fold character by character so É/é match but ß and SS stay distinct.
+        # Component positions, spelling, punctuation and accents remain significant.
+        return tuple(char.casefold() for char in normalized)
+    return normalized
 
 
 def _paths(root: Path, recursive: bool, findings: list[Finding], cancel: Event | None) -> list[Path]:
@@ -101,7 +110,7 @@ def scan_directory(
     duplicates: dict[str, FileRecord] = {}
     study_patients: dict[str, tuple[str, ...]] = {}
     series_studies: dict[str, str] = {}
-    identity_details: dict[tuple[str, ...], dict[str, tuple[str, str]]] = {}
+    identity_details: dict[tuple[str, ...], dict[str, tuple[_DemographicValue, str]]] = {}
     for index, source in enumerate(paths, 1):
         check_cancel(cancel)
         if progress:
@@ -208,7 +217,7 @@ def scan_directory(
         ):
             raw = ds.get(keyword)
             value = (
-                _patient_name_for_comparison(raw)
+                _patient_name_for_comparison(raw, ignore_case=identity[0] == "id")
                 if keyword == "PatientName" and isinstance(raw, PersonName)
                 else str(raw or "").strip()
             )

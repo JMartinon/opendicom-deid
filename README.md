@@ -113,6 +113,11 @@ If a scan reports **PATIENT_CONFLICT**, files grouped under the same patient ID
 and issuer (or the same study when the ID is absent) have different nonempty
 Patient Name or Patient Birth Date values. Starting with 0.3.3.dev0, the scan
 ignores insignificant DICOM name padding and trailing empty name components.
+Starting with 0.3.3.dev1, files with the same nonempty Patient ID and issuer
+scope can also differ in name capitalization: their output Patient Name and
+Patient ID use the same pseudonym. When Patient ID is missing, the study-based
+fallback still checks case. Different spellings or conflicting nonempty birth
+dates still block processing.
 For remaining conflicts it identifies the field and both files by neutral
 number and modality. Compare that field locally in the original export. If the
 values disagree, verify the patient identity in the source system and re-export

@@ -81,8 +81,8 @@ def main() -> None:
                 roi.ContourSequence = [contour]
                 ds.ROIContourSequence = [roi]
             else:
-                # Equivalent to the image name: the last three PN components are empty.
-                ds.PatientName = "Synthetic^Only^^^"
+                # Same scoped ID as the images; the plan capitalizes and pads the name.
+                ds.PatientName = "SYNTHETIC^ONLY^^^"
                 ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
                 ds.TreatmentMachineName = "SYNTHETIC-ID"
                 reference = Dataset()
@@ -182,7 +182,7 @@ def main() -> None:
         assert saved["RTDOSE"].PixelData == instances[3].PixelData
         assert all(not elem.tag.is_private for ds in saved.values() for elem in ds.iterall())
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
-        assert len({str(ds.PatientID) for ds in saved.values()}) == 1
+        assert len({(str(ds.PatientID), str(ds.PatientName)) for ds in saved.values()}) == 1
         assert saved["CT"].PatientID != "SYNTHETIC-ID"
     print("Packaged executable: GUI startup, two-process de-identification and exit, "
           "equipment and clinical RT text, "
