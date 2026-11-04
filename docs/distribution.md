@@ -122,6 +122,12 @@ packaging, and checks of the packaged executable. It prefers Python 3.12 when
 creating the environment and reuses a compatible existing build environment.
 An incompatible environment is left intact; rename it before retrying.
 
+Version 0.3.3.dev2 also runs native Windows tests using input, output and report
+paths longer than 300 characters. The packaged executable check uses a long
+synthetic dataset path, passed without any special prefix, to verify automatic
+path handling. These checks include parallel processing and source/output
+separation; no patient data is used.
+
 If a Windows build fails once during synthetic processing but succeeds on a
 complete rerun, the failure was intermittent. The pip upgrade notice is not a
 build error. Do not bypass failed checks; use the executable only after the

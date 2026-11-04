@@ -11,6 +11,7 @@ from pydicom.errors import InvalidDicomError
 from pydicom.uid import UID_dictionary
 
 from .diagnostics import private_diagnostics
+from .filesystem import filesystem_path
 from .models import Cancelled, Finding, check_cancel
 from .scanner import _paths
 from .sop_classes import (
@@ -103,7 +104,7 @@ def inspect_storage(
         check_cancel(cancel)
         if file_id is not None and (type(file_id) is not int or file_id < 1):
             return {"status": "FAILED", "message": "File numbers must be positive."}
-        root = Path(directory).expanduser().resolve()
+        root = filesystem_path(directory)
         if not root.is_dir():
             return {"status": "FAILED", "message": "Select a readable input directory."}
         findings: list[Finding] = []

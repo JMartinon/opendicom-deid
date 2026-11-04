@@ -27,6 +27,7 @@ from pydicom.filereader import read_file_meta_info
 from pydicom.uid import DeflatedExplicitVRLittleEndian
 
 from .diagnostics import private_diagnostics
+from .filesystem import filesystem_path
 from .models import Cancelled, Finding, check_cancel
 from .scanner import _paths
 from .uid_mapper import uid_kind
@@ -241,7 +242,7 @@ def inspect_privacy(
         check_cancel(cancel)
         if type(file_id) is not int or file_id < 1:
             return _failure("FAILED", "File numbers must be positive.")
-        root = Path(directory).expanduser().resolve()
+        root = filesystem_path(directory)
         if not root.is_dir():
             return _failure("FAILED", "Select a readable input directory.")
         findings: list[Finding] = []

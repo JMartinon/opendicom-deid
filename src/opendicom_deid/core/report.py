@@ -11,6 +11,7 @@ from typing import Literal
 
 from opendicom_deid import __version__
 
+from .filesystem import filesystem_path
 from .models import Finding
 
 
@@ -69,7 +70,7 @@ class Report:
 
         Diagnostics may identify standard SOP classes by their public technical UID.
         """
-        with Path(path).open("x", encoding="utf-8") as stream:
+        with filesystem_path(path, resolve=False).open("x", encoding="utf-8") as stream:
             stream.write(json.dumps(self.to_dict(), indent=2) + "\n")
 
     def summary(self) -> str:

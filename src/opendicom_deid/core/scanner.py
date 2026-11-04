@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections import Counter
 from pathlib import Path
 from threading import Event
@@ -11,6 +12,7 @@ from pydicom.dataset import Dataset
 from pydicom.uid import UID
 from pydicom.valuerep import PersonName
 
+from .filesystem import filesystem_path, safe_error_details
 from .inspection import capture_snapshot
 from .models import FileRecord, Finding, Progress, ProgressCallback, ScanResult, check_cancel
 from .reader import ReadError, file_digest, looks_like_dicom, read_dicom
@@ -65,25 +67,68 @@ def _patient_name_for_comparison(
 
 def _paths(root: Path, recursive: bool, findings: list[Finding], cancel: Event | None) -> list[Path]:
     paths: list[Path] = []
+    entry_number = 0
 
-    def unreadable(_: OSError) -> None:
-        findings.append(Finding("FAIL", "DIRECTORY_UNREADABLE", "An input directory is unreadable."))
+    def unreadable(error: OSError) -> None:
+        check_cancel(cancel)
+        findings.append(Finding(
+            "FAIL", "DIRECTORY_UNREADABLE",
+            f"An input directory could not be listed ({safe_error_details(error)}). "
+            "Check folder access and that the export is complete and still available.",
+        ))
+
+    def inspect_entry(path: Path, is_directory: bool) -> bool:
+        nonlocal entry_number
+        check_cancel(cancel)
+        entry_number += 1
+        # Entry labels describe inventory failures, never a guessed DICOM File number.
+        label = f"Entry {entry_number:06d}"
+        try:
+            info = path.lstat()
+            # Windows name-surrogate reparse points include junctions as well
+            # as symbolic links. Do not traverse them or read their targets.
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) & 0x20000000:
+                findings.append(Finding(
+                    "FAIL", "SYMLINK", "A symbolic link or junction was excluded from the input.", label,
+                ))
+                return False
+            # Use stat rather than is_file/is_dir, which can suppress useful
+            # access errors and mislabel inaccessible paths as special files.
+            mode = path.stat().st_mode
+        except OSError as error:
+            findings.append(Finding(
+                "FAIL", "ENTRY_ACCESS",
+                f"An input entry could not be accessed ({safe_error_details(error)}). "
+                "Check that the export is complete, the files are available locally, "
+                "and you have read access.", label,
+            ))
+            return False
+        if is_directory and stat.S_ISDIR(mode):
+            return True
+        if not is_directory and stat.S_ISREG(mode):
+            paths.append(path)
+            return True
+        if stat.S_ISDIR(mode) or stat.S_ISREG(mode):
+            findings.append(Finding(
+                "FAIL", "ENTRY_CHANGED",
+                "An input entry changed type during inventory. Wait for the export to finish, then rescan.",
+                label,
+            ))
+        else:
+            findings.append(Finding(
+                "FAIL", "SPECIAL_FILE", "An input entry is a special filesystem object, not a regular file or directory.",
+                label,
+            ))
+        return False
 
     for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
         check_cancel(cancel)
         dirs.sort()
         for name in list(dirs):
-            if (Path(directory) / name).is_symlink():
+            if not inspect_entry(Path(directory) / name, True):
                 dirs.remove(name)
-                findings.append(Finding("FAIL", "SYMLINK", "A symbolic-link directory was excluded."))
         for name in sorted(files):
-            path = Path(directory) / name
-            if path.is_symlink():
-                findings.append(Finding("FAIL", "SYMLINK", "A symbolic-link file was excluded."))
-            elif path.is_file():
-                paths.append(path)
-            else:
-                findings.append(Finding("FAIL", "SPECIAL_FILE", "An input entry is not a regular file."))
+            inspect_entry(Path(directory) / name, False)
         if not recursive:
             break
     return paths
@@ -98,9 +143,19 @@ def scan_directory(
     allow_viewray_public_plan: bool = False,
 ) -> ScanResult:
     """Inventory without retaining pixel buffers or writing identifiable intermediate files."""
-    root = Path(path).expanduser().resolve()
-    result = ScanResult(root)
-    if not root.is_dir():
+    result = ScanResult(Path(path))
+    try:
+        root = filesystem_path(path)
+        result.input_dir = root
+        directory = stat.S_ISDIR(root.stat().st_mode)
+    except (OSError, ValueError) as error:
+        result.findings.append(Finding(
+            "FAIL", "INPUT_DIRECTORY",
+            f"The input directory could not be accessed ({safe_error_details(error)}). "
+            "Check its location, availability and read permissions.",
+        ))
+        return result
+    if not directory:
         result.findings.append(Finding("FAIL", "INPUT_DIRECTORY", "Select a readable input directory."))
         return result
     if progress:
@@ -121,7 +176,15 @@ def scan_directory(
             ds = read_dicom(source)
             if file_digest(source) != before_hash:
                 raise ReadError("Source changed during scan.")
-        except (ReadError, OSError):
+        except OSError as error:
+            result.findings.append(Finding(
+                "FAIL", "FILE_ACCESS",
+                f"An input file could not be read ({safe_error_details(error)}). "
+                "Check that the export is complete, the file is available locally, "
+                "and you have read access.", label,
+            ))
+            continue
+        except ReadError:
             if looks_like_dicom(source):
                 result.findings.append(Finding(
                     "FAIL", "DICOM_READ", "A DICOM candidate could not be safely read.", label

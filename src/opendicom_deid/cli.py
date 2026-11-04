@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Event
 
 from . import __version__
+from .core.filesystem import filesystem_path
 from .core.models import Cancelled, Options
 
 
@@ -70,10 +71,10 @@ def parser() -> argparse.ArgumentParser:
 def report_path_allowed(path: Path, input_dir: Path) -> bool:
     """A report must not overwrite source files, or masquerade as a DICOM file."""
     try:
-        return path.suffix.lower() == ".json" and not path.resolve().is_relative_to(
-            input_dir.resolve()
+        return path.suffix.lower() == ".json" and not filesystem_path(path).is_relative_to(
+            filesystem_path(input_dir)
         )
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 

@@ -7,6 +7,7 @@ Automated checks never establish that pixels or unusual metadata are anonymous.
 
 from __future__ import annotations
 
+import stat
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ from pydicom.dataset import Dataset
 from pydicom.uid import UID
 
 from .equipment_text import cleaned_equipment_values
+from .filesystem import filesystem_path, safe_error_details
 from .inspection import Snapshot, capture_snapshot, walk_elements
 from .models import (
     ExpectedOutput,
@@ -33,6 +35,7 @@ from .reader import looks_like_dicom, read_dicom
 from .reference_classes import reference_class_findings, reference_class_repairs
 from .report import Report
 from .rt_text import clean_rt_values
+from .scanner import _paths
 from .sop_classes import (
     SUPPORTED_SOP_CLASSES,
     VIEWRAY_PLAN_REVIEW_REQUIRED,
@@ -465,23 +468,25 @@ def validate_batch(
 
 def validate_directory(path: str | Path, recursive: bool = True) -> Report:
     """Inspect an existing output directory, without claiming source equivalence."""
-    directory = Path(path)
     report = Report()
-    if not directory.is_dir():
+    try:
+        directory = filesystem_path(path)
+        is_directory = stat.S_ISDIR(directory.stat().st_mode)
+    except (OSError, ValueError) as error:
+        report.findings.append(_finding(
+            "FAIL", "INVALID_DIRECTORY",
+            f"The directory could not be accessed ({safe_error_details(error)}). "
+            "Check its location, availability and read permissions.",
+        ))
+        return report
+    if not is_directory:
         report.findings.append(_finding("FAIL", "INVALID_DIRECTORY", "Select an existing directory."))
         return report
-    files = sorted(directory.rglob("*") if recursive else directory.iterdir())
+    files = _paths(directory, recursive, report.findings, None)
     snapshots: list[Snapshot] = []
     labels: list[str] = []
     retained_clinical_text = False
     for candidate in files:
-        if candidate.is_symlink():
-            report.findings.append(_finding(
-                "FAIL", "SYMLINK", "A symbolic link cannot be included in output validation."
-            ))
-            continue
-        if not candidate.is_file():
-            continue
         file_id = f"FILE-{report.input_count + 1:06d}"
         try:
             ds = read_dicom(candidate, remove_private=False)

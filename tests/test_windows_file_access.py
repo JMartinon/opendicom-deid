@@ -11,6 +11,7 @@ import pytest
 
 from opendicom_deid.core import anonymizer, filesystem
 from opendicom_deid.core.anonymizer import process_batch
+from opendicom_deid.core.filesystem import filesystem_path
 from opendicom_deid.core.models import Cancelled, Progress
 
 
@@ -97,7 +98,7 @@ def test_cancellation_interrupts_lock_wait_before_another_attempt(monkeypatch):
 def create_source(tmp_path, dicom_factory, dicom_writer):
     source = tmp_path / "SYNTHETIC-PRIVATE-INPUT"
     original = dicom_writer(dicom_factory(), source / "one.dcm")
-    return source, original, tmp_path / "output"
+    return filesystem_path(source), filesystem_path(original), filesystem_path(tmp_path / "output")
 
 
 def test_output_creation_retries_only_before_opening_the_file(
@@ -224,7 +225,7 @@ def test_transient_source_hash_lock_restarts_final_check_before_publication(
     tmp_path, dicom_factory, dicom_writer, monkeypatch,
 ):
     source, first, destination = create_source(tmp_path, dicom_factory, dicom_writer)
-    second = dicom_writer(dicom_factory(), source / "two.dcm")
+    second = filesystem_path(dicom_writer(dicom_factory(), source / "two.dcm"))
     original_bytes = [first.read_bytes(), second.read_bytes()]
     real_digest = anonymizer.file_digest
     real_rename = Path.rename

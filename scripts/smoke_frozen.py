@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import platform
+import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import pydicom
@@ -25,6 +27,45 @@ from opendicom_deid.core.sop_classes import VIEWRAY_RT_PLAN_STORAGE
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@contextmanager
+def synthetic_directory():
+    """Use real long paths on Windows without depending on the app's resolver."""
+    if platform.system() != "Windows":
+        with tempfile.TemporaryDirectory(prefix="opendicom-synthetic-smoke-") as directory:
+            yield Path(directory)
+        return
+    directory = tempfile.mkdtemp(prefix="opendicom-synthetic-smoke-")
+    if directory.startswith("\\\\?\\"):
+        extended = directory
+    elif directory.startswith("\\\\"):
+        extended = "\\\\?\\UNC\\" + directory[2:]
+    else:
+        extended = "\\\\?\\" + directory
+    container = Path(extended)
+    root = container
+    for index in range(5):
+        root /= f"synthetic-long-level-{index}-" + "x" * 48
+    try:
+        root.mkdir(parents=True)
+        assert len(cli_path(root)) > 300
+        yield root
+    finally:
+        # TemporaryDirectory would retain its ordinary spelling for cleanup,
+        # which can fail on the exact long-path configuration this exercises.
+        shutil.rmtree(container)
+
+
+def cli_path(path: Path) -> str:
+    """Feed ordinary paths to the executable, never its own normalized result."""
+    value = str(path)
+    if platform.system() == "Windows":
+        if value.startswith("\\\\?\\UNC\\"):
+            return "\\\\" + value[8:]
+        if value.startswith("\\\\?\\"):
+            return value[4:]
+    return value
+
+
 def main() -> None:
     relative = {
         "Darwin": "OpenDICOM-De-ID.app/Contents/MacOS/OpenDICOM-De-ID",
@@ -33,8 +74,7 @@ def main() -> None:
     }[platform.system()]
     executable = ROOT / "dist" / relative
     subprocess.run([str(executable), "--check-gui"], check=True, timeout=30)
-    with tempfile.TemporaryDirectory(prefix="opendicom-synthetic-smoke-") as directory:
-        root = Path(directory)
+    with synthetic_directory() as root:
         source, output = root / "input", root / "output"
         source.mkdir()
         study, frame = generate_uid(), generate_uid()
@@ -128,8 +168,8 @@ def main() -> None:
         # Windows --windowed builds have no stdout: verify exit status and files.
         blocked_output, blocked_report = root / "blocked-output", root / "blocked-report.json"
         blocked = subprocess.run(
-            [str(executable), "deidentify", str(source), str(blocked_output),
-             "--report", str(blocked_report)],
+            [str(executable), "deidentify", cli_path(source), cli_path(blocked_output),
+             "--report", cli_path(blocked_report)],
             check=False, timeout=90,
         )
         assert blocked.returncode == 1
@@ -137,8 +177,8 @@ def main() -> None:
         assert blocked_result["status"] == "FAILED" and not blocked_output.exists()
         assert any(f["code"] == "VIEWRAY_PLAN_REVIEW_REQUIRED" for f in blocked_result["findings"])
         subprocess.run(
-            [str(executable), "deidentify", str(source), str(output),
-             "--report", str(report), "--viewray-public-plan", "--workers", "2"],
+            [str(executable), "deidentify", cli_path(source), cli_path(output),
+             "--report", cli_path(report), "--viewray-public-plan", "--workers", "2"],
             check=True, timeout=90,
         )
         result = json.loads(report.read_text(encoding="utf-8"))
@@ -184,6 +224,8 @@ def main() -> None:
         assert saved["CT"].SOPInstanceUID != instances[0].SOPInstanceUID
         assert len({(str(ds.PatientID), str(ds.PatientName)) for ds in saved.values()}) == 1
         assert saved["CT"].PatientID != "SYNTHETIC-ID"
+    if platform.system() == "Windows":
+        print("Packaged executable: ordinary Windows input/output/report paths over 300 characters passed.")
     print("Packaged executable: GUI startup, two-process de-identification and exit, "
           "equipment and clinical RT text, "
           "ViewRay opt-in, CT/RT references and pixels passed.")

@@ -2,8 +2,23 @@
 
 import json
 
+import pytest
+
 from opendicom_deid.core.models import Finding
 from opendicom_deid.core.report import Report, format_findings
+
+
+def test_report_save_does_not_follow_a_dangling_symlink(tmp_path):
+    target = tmp_path / "not-created.json"
+    link = tmp_path / "link.json"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("This host does not permit symbolic links.")
+    with pytest.raises(FileExistsError):
+        Report().save(link)
+    assert not target.exists()
+    assert link.is_symlink()
 
 
 def test_repeated_failures_are_grouped_but_json_keeps_every_finding(tmp_path):

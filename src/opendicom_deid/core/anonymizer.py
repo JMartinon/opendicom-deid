@@ -15,7 +15,12 @@ from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRBigEndian, ExplicitVRLittleEndian, ImplicitVRLittleEndian
 
 from .diagnostics import private_diagnostics
-from .filesystem import retry_windows_file_lock, safe_error_details
+from .filesystem import (
+    filesystem_path,
+    is_link_or_junction,
+    retry_windows_file_lock,
+    safe_error_details,
+)
 from .models import (
     Cancelled,
     ExpectedOutput,
@@ -42,15 +47,15 @@ class DirectoryError(ValueError):
 
 def check_directories(input_dir: str | Path, output_dir: str | Path) -> tuple[Path, Path]:
     """Require disjoint trees and an unused destination; never overwrite a clinical source."""
-    source = Path(input_dir).expanduser().resolve()
-    requested = Path(output_dir).expanduser()
-    target = requested.resolve()
+    source = filesystem_path(input_dir)
+    requested = filesystem_path(output_dir, resolve=False)
+    if is_link_or_junction(requested):
+        raise DirectoryError("The output directory cannot be a symbolic link or junction.")
+    target = filesystem_path(requested)
     if not source.is_dir():
         raise DirectoryError("Select a readable input directory.")
     if source == target or source in target.parents or target in source.parents:
         raise DirectoryError("Input and output must be separate directories, outside each other's trees.")
-    if requested.is_symlink():
-        raise DirectoryError("The output directory cannot be a symbolic link.")
     if target.exists() and (not target.is_dir() or any(target.iterdir())):
         raise DirectoryError("Choose a new or empty output directory.")
     return source, target

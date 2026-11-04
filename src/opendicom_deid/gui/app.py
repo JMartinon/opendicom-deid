@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .. import __version__
 from ..cli import report_path_allowed
+from ..core.filesystem import display_path, filesystem_path
 from ..core.models import Cancelled, Finding, Progress, ScanResult
 from ..core.report import Report, format_findings
 from .appearance import SystemAppearanceWatcher, macos_window_appearance
@@ -44,12 +45,12 @@ def create_output_folder(parent: str, name: str, input_directory: str) -> Path:
         raise ValueError("Enter a folder name without path separators or special characters.")
     if not parent.strip():
         raise ValueError("Choose a parent folder first.")
-    parent_path = Path(parent).expanduser().resolve(strict=True)
+    parent_path = filesystem_path(parent, strict=True)
     if not parent_path.is_dir():
         raise ValueError("The parent location must be an existing folder.")
     destination = parent_path / name
     if input_directory.strip():
-        source = Path(input_directory.strip()).expanduser().resolve()
+        source = filesystem_path(input_directory.strip())
         if (
             destination == source
             or destination.is_relative_to(source)
@@ -310,16 +311,19 @@ class App(tk.Tk):
             return
         output = self.output_path.get().strip()
         source = self.input_path.get().strip()
-        if output:
-            initial = Path(output).expanduser()
+        try:
+            if output:
+                initial = filesystem_path(output, resolve=False)
+                if not initial.is_dir():
+                    initial = initial.parent
+            elif source:
+                initial = filesystem_path(source, resolve=False).parent
+            else:
+                initial = filesystem_path(Path.home(), resolve=False)
             if not initial.is_dir():
-                initial = initial.parent
-        elif source:
-            initial = Path(source).expanduser().parent
-        else:
-            initial = Path.home()
-        if not initial.is_dir():
-            initial = Path.home()
+                initial = filesystem_path(Path.home(), resolve=False)
+        except (OSError, ValueError):
+            initial = filesystem_path(Path.home(), resolve=False)
         window = tk.Toplevel(self)
         self._folder_window = window
         window.title("Create output folder")
@@ -335,7 +339,7 @@ class App(tk.Tk):
         ttk.Label(
             body, text="Choose where to put the de-identified dataset.", style="CardMuted.TLabel"
         ).grid(row=1, columnspan=2, sticky="w", pady=(6, 20))
-        parent = tk.StringVar(value=str(initial))
+        parent = tk.StringVar(value=display_path(initial))
         name = tk.StringVar(value="deidentified")
         error = tk.StringVar()
         ttk.Label(body, text="Parent folder", style="Field.TLabel").grid(row=2, sticky="w")
@@ -380,7 +384,7 @@ class App(tk.Tk):
                     "Could not create the folder. Check the parent location and write permissions."
                 )
                 return
-            self.output_path.set(str(destination))
+            self.output_path.set(display_path(destination))
             self.status.set("New empty output folder created. Ready to de-identify.")
             dismiss()
             self.output_entry.focus_set()

@@ -109,6 +109,19 @@ their generated patient pseudonyms. Empty folders and non-DICOM files are not co
 Turn off **Preserve patient folders and subfolders** in Advanced options only if
 you want a flat output directory (CLI: `--organization flat`).
 
+From 0.3.3.dev2, long Windows input and output paths are handled automatically,
+including network-share paths. Select folders normally; you do not need to type
+an extended-path prefix or change Windows settings. Windows still enforces
+permissions, filename/component limits and storage availability.
+
+If a directory entry cannot be inspected or a file cannot be read, the report
+now identifies an access failure and includes safe Windows/OS error numbers.
+For example, Windows error 3 means a path could not be found, while error 5
+means access was denied. These failures stop the batch rather than silently
+dropping files. `SPECIAL_FILE` is reserved for confirmed special filesystem
+objects. Inventory failures use neutral `Entry` numbers; they are not DICOM
+`File` numbers and should not be entered into **Inspect file…**.
+
 If a scan reports **PATIENT_CONFLICT**, files grouped under the same patient ID
 and issuer (or the same study when the ID is absent) have different nonempty
 Patient Name or Patient Birth Date values. Starting with 0.3.3.dev0, the scan

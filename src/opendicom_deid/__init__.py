@@ -1,3 +1,3 @@
 """Offline DICOM de-identification for research; privacy review remains required."""
 
-__version__ = "0.3.3.dev1"
+__version__ = "0.3.3.dev2"

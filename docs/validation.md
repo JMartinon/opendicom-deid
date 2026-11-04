@@ -1,4 +1,4 @@
-# Validation evidence and remaining acceptance work — 0.3.2
+# Validation evidence and remaining acceptance work — 0.3.3.dev2
 
 This document describes implementation evidence, not certification or clinical
 acceptance. All automated test objects are generated in temporary directories
@@ -352,6 +352,22 @@ preservation is not evidence that an arbitrary compressed stream can be displaye
   directory beside the destination. It must not be shared as a completed result.
 
 ## Local and platform acceptance
+
+Version 0.3.3.dev2 normalizes Windows drive and UNC paths to extended-length
+syntax before filesystem access, retaining that syntax throughout scanning,
+parallel processing, validation, publication and report saving. Synthetic tests
+cover path conversion, source/output overlap, link safeguards and filesystem
+access failures without exposing source names or exception text in reports.
+On macOS, **615 tests passed and 13 Windows-only tests were skipped**; lint and
+the native source GUI smoke check also passed.
+
+The Windows-only tests exercise ordinary and prefixed input/output paths longer
+than 300 characters, parallel processing, inspections, report saving, output
+folder creation and overlap/junction rejection. The Windows build also checks
+the packaged executable using ordinary long paths and synthetic CT/RT objects.
+These native Windows checks have not been run for this change on the development
+Mac; they run during the local Windows build. No hosted Actions run or new
+executable was produced for this source update.
 
 In 0.3.3.dev1, a synthetic CT, RTSTRUCT and RTPLAN with one scoped Patient ID
 and names differing in capitalization produced one output Patient Name and
